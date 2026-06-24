@@ -67,6 +67,17 @@
       return <button onClick={onClick} className={"rounded-full px-3 py-1 text-xs font-semibold " + (on ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500")}>{on ? (onText||"● เปิด") : (offText||"○ ปิด")}</button>;
     }
 
+    const PROVINCES = ["กรุงเทพมหานคร","กระบี่","กาญจนบุรี","กาฬสินธุ์","กำแพงเพชร","ขอนแก่น","จันทบุรี","ฉะเชิงเทรา","ชลบุรี","ชัยนาท","ชัยภูมิ","ชุมพร","เชียงราย","เชียงใหม่","ตรัง","ตราด","ตาก","นครนายก","นครปฐม","นครพนม","นครราชสีมา","นครศรีธรรมราช","นครสวรรค์","นนทบุรี","นราธิวาส","น่าน","บึงกาฬ","บุรีรัมย์","ปทุมธานี","ประจวบคีรีขันธ์","ปราจีนบุรี","ปัตตานี","พระนครศรีอยุธยา","พะเยา","พังงา","พัทลุง","พิจิตร","พิษณุโลก","เพชรบุรี","เพชรบูรณ์","แพร่","ภูเก็ต","มหาสารคาม","มุกดาหาร","แม่ฮ่องสอน","ยโสธร","ยะลา","ร้อยเอ็ด","ระนอง","ระยอง","ราชบุรี","ลพบุรี","ลำปาง","ลำพูน","เลย","ศรีสะเกษ","สกลนคร","สงขลา","สตูล","สมุทรปราการ","สมุทรสงคราม","สมุทรสาคร","สระแก้ว","สระบุรี","สิงห์บุรี","สุโขทัย","สุพรรณบุรี","สุราษฎร์ธานี","สุรินทร์","หนองคาย","หนองบัวลำภู","อ่างทอง","อำนาจเจริญ","อุดรธานี","อุตรดิตถ์","อุทัยธานี","อุบลราชธานี"];
+
+    function parseCSVText(text){
+      const rows=[]; let row=[], cur='', q=false;
+      for(let i=0;i<text.length;i++){ const c=text[i];
+        if(q){ if(c==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+        else { if(c==='"')q=true; else if(c===','){row.push(cur);cur='';} else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur='';} else if(c==='\r'){} else cur+=c; } }
+      if(cur!==''||row.length){row.push(cur);rows.push(row);}
+      return rows.filter(r=>r.some(x=>(x||'').trim()!==''));
+    }
+
     /* ===================== PRODUCTS (SKU) ===================== */
     function ProductsView() {
       const emptyForm = () => ({ id:"", name:"", description:"", price:"", label:"", product_type:"", packs:"1", image:"", enabled:true });
@@ -260,28 +271,81 @@
       const [form, setForm] = useState(empty());
       const [editing, setEditing] = useState(false);
       const [flash, setFlash] = useState("");
+      const [importing, setImporting] = useState(false);
       const refresh = () => Store.dcList().then(setRows).catch(e=>setFlash(e.message));
       useEffect(() => { refresh(); }, []);
       const set = (k,v) => setForm(f => ({ ...f, [k]:v }));
+
+      // auto-generate next DC ID (DC-0001, DC-0002, ...) from existing ids
+      function nextDcId(list){
+        let max = 0;
+        (list||rows).forEach(d => { const m = /^DC-(\d+)$/.exec(d.dc_id||""); if(m){ const n=parseInt(m[1],10); if(n>max) max=n; } });
+        return "DC-" + String(max+1).padStart(4,"0");
+      }
+      const previewId = editing ? form.dc_id : nextDcId();
+
       async function save(){
-        if(!form.dc_id.trim()) return setFlash("กรุณากรอก DC ID");
         if(!form.dc_name.trim()) return setFlash("กรุณากรอกชื่อ DC");
-        try { await Store.dcUpsert({ ...form, dc_id:form.dc_id.trim(), dc_name:form.dc_name.trim(), province:form.province.trim() });
-          setForm(empty()); setEditing(false); refresh(); setFlash(editing?"อัปเดต DC แล้ว ✓":"เพิ่ม DC แล้ว ✓"); setTimeout(()=>setFlash(""),2500); }
+        const id = editing ? form.dc_id : nextDcId();
+        try { await Store.dcUpsert({ dc_id:id, dc_name:form.dc_name.trim(), province:form.province, status:form.status });
+          setForm(empty()); setEditing(false); refresh(); setFlash(editing?"อัปเดต DC แล้ว ✓":"เพิ่ม DC แล้ว ✓ ("+id+")"); setTimeout(()=>setFlash(""),3000); }
         catch(e){ setFlash("บันทึกไม่สำเร็จ: " + e.message); }
       }
       function edit(d){ setForm({ ...d }); setEditing(true); window.scrollTo({top:0,behavior:"smooth"}); }
       async function toggle(d){ try { await Store.dcToggle(d.dc_id, d.status); refresh(); } catch(e){ alert(e.message); } }
       async function remove(id){ if(confirm("ลบ DC นี้?")){ try { await Store.dcRemove(id); refresh(); } catch(e){ alert(e.message); } } }
+
+      function downloadTemplate(){
+        const csv = "dc_name,province,status\nคลังกรุงเทพ,กรุงเทพมหานคร,active\nคลังเชียงใหม่,เชียงใหม่,active\n";
+        const blob = new Blob(["﻿"+csv], { type:"text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); a.href=url; a.download="dc_import_template.csv"; document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      }
+      async function onImport(file){
+        if(!file) return; setImporting(true); setFlash("");
+        try {
+          const text = await file.text();
+          const csv = parseCSVText(text);
+          if(csv.length < 2){ setFlash("ไฟล์ไม่มีข้อมูล (ต้องมีหัวตาราง + อย่างน้อย 1 แถว)"); setImporting(false); return; }
+          const head = csv[0].map(h=>(h||"").trim().toLowerCase());
+          const iName=head.indexOf("dc_name"), iProv=head.indexOf("province"), iStat=head.indexOf("status");
+          if(iName<0){ setFlash("ไม่พบคอลัมน์ dc_name ในไฟล์ — โหลด template เพื่อดูรูปแบบ"); setImporting(false); return; }
+          let current = await Store.dcList(); let added=0;
+          for(let r=1;r<csv.length;r++){
+            const c = csv[r]; const name=(c[iName]||"").trim(); if(!name) continue;
+            const id = nextDcId(current);
+            const rec = { dc_id:id, dc_name:name, province: iProv>=0?(c[iProv]||"").trim():"", status: (iStat>=0 && (c[iStat]||"").trim()) || "active" };
+            await Store.dcUpsert(rec); current = current.concat([rec]); added++;
+          }
+          refresh(); setFlash("นำเข้าสำเร็จ "+added+" รายการ ✓"); setTimeout(()=>setFlash(""),4000);
+        } catch(e){ setFlash("นำเข้าไม่สำเร็จ: " + (e&&e.message?e.message:e)); }
+        finally { setImporting(false); }
+      }
+
       return (
         <div>
-          <h1 className="mb-4 text-xl font-extrabold">Distribution Centers (DC)</h1>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h1 className="text-xl font-extrabold">Distribution Centers (DC)</h1>
+            <div className="flex gap-2">
+              <button onClick={downloadTemplate} className="rounded-xl border-2 border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">⬇ Template</button>
+              <label className="btn-grad cursor-pointer px-4 py-2 text-sm">
+                {importing ? "กำลังนำเข้า…" : "⬆ นำเข้าไฟล์ CSV"}
+                <input type="file" accept=".csv,text/csv" className="hidden" disabled={importing} onChange={e=>{ onImport(e.target.files[0]); e.target.value=""; }} />
+              </label>
+            </div>
+          </div>
           <section className="card mb-6">
             <h2 className="mb-3 font-bold">{editing ? "แก้ไข DC" : "เพิ่ม DC ใหม่"}</h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div><label className="label">DC ID *</label><input className="field disabled:bg-gray-100" value={form.dc_id} disabled={editing} onChange={e=>set("dc_id",e.target.value)} placeholder="เช่น DC-BKK-01" /></div>
+              <div><label className="label">DC ID <span className="font-normal text-gray-400">(สร้างอัตโนมัติ)</span></label><input className="field bg-gray-100 text-gray-500" value={previewId} disabled readOnly /></div>
               <div><label className="label">DC Name *</label><input className="field" value={form.dc_name} onChange={e=>set("dc_name",e.target.value)} placeholder="เช่น คลังกรุงเทพ" /></div>
-              <div><label className="label">Province</label><input className="field" value={form.province} onChange={e=>set("province",e.target.value)} placeholder="เช่น กรุงเทพมหานคร" /></div>
+              <div><label className="label">Province</label>
+                <select className="field" value={form.province} onChange={e=>set("province",e.target.value)}>
+                  <option value="">— เลือกจังหวัด —</option>
+                  {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
               <div><label className="label">Status</label>
                 <select className="field" value={form.status} onChange={e=>set("status",e.target.value)}>
                   <option value="active">active (เปิด)</option>
