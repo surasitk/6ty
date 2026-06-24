@@ -50,20 +50,16 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="store.js"></script>
 
   <!-- App source kept as text/plain so Babel does NOT auto-run it with the
        "automatic" JSX runtime (which emits `import` and breaks classic scripts). -->
   <script type="text/plain" id="app-src">
-    const { useState, useMemo } = React;
+    const { useState, useMemo, useEffect } = React;
     const baht = (n) => "฿" + Number(n || 0).toLocaleString("th-TH");
     const STEPS = ["สินค้า", "ผู้รับ", "ชำระเงิน", "ยืนยัน"];
 
-    // ── demo data (no backend) ──
-    const CATALOG = [
-      { sku_code:"6TY-6",  sku_name:"6ty° แพ็ก 6 ขวด", size:"350 ml × 6",  price:90,  badge:"6 PACK" },
-      { sku_code:"6TY-12", sku_name:"6ty° แพ็ก 12 ขวด", size:"350 ml × 12", price:170, badge:"ยอดนิยม" },
-      { sku_code:"6TY-72", sku_name:"6ty° ยกลัง 72 ขวด", size:"350 ml × 72", price:960, badge:"คุ้มสุด" },
-    ];
+    // Products come from the shared Store (managed in admin.html), demo only.
     const POSTAL = {
       "10100": { province:"กรุงเทพมหานคร", district:"ป้อมปราบศัตรูพ่าย", subdistrict:"วัดเทพศิรินทร์", branch:"ปณ. พลับพลาไชย (เดโม)" },
       "10200": { province:"กรุงเทพมหานคร", district:"พระนคร", subdistrict:"พระบรมมหาราชวัง", branch:"ปณ. ราชดำเนิน (เดโม)" },
@@ -103,6 +99,8 @@
 
     function App() {
       const [step, setStep] = useState(0);
+      const [catalog, setCatalog] = useState([]);
+      useEffect(() => { setCatalog(Store.enabled()); }, []);
       const [cart, setCart] = useState({});
       const [customer, setCustomer] = useState("");
       const [phone, setPhone] = useState("");
@@ -120,7 +118,7 @@
       const [err, setErr] = useState("");
       const [done, setDone] = useState(null);
 
-      const lines = useMemo(() => Object.entries(cart).filter(([,q])=>q>0).map(([sku,qty]) => ({ item: CATALOG.find(c=>c.sku_code===sku), qty })), [cart]);
+      const lines = useMemo(() => Object.entries(cart).filter(([,q])=>q>0).map(([sku,qty]) => ({ item: catalog.find(c=>c.id===sku), qty })).filter(l=>l.item), [cart, catalog]);
       const subtotal = useMemo(() => lines.reduce((s,l)=>s+l.item.price*l.qty,0), [lines]);
       const total = useMemo(() => (promo && promo.valid && typeof promo.discount_price==="number") ? promo.discount_price : subtotal, [subtotal, promo]);
       const totalQty = useMemo(() => lines.reduce((s,l)=>s+l.qty,0), [lines]);
@@ -179,20 +177,23 @@
 
           {step===0 && (
             <div className="space-y-3">
-              {CATALOG.map(item => {
-                const qty = cart[item.sku_code] || 0;
+              {catalog.length===0 && <p className="card text-center text-sm text-gray-400">ยังไม่มีสินค้าให้สั่ง — เพิ่มได้ที่หน้า <a href="admin.html" className="font-semibold text-sixty-blued underline">Admin</a></p>}
+              {catalog.map(item => {
+                const qty = cart[item.id] || 0;
                 return (
-                  <div key={item.sku_code} className={"card flex items-center gap-3 transition " + (qty>0?"ring-2 ring-sixty-blue/40":"")}>
-                    <Bottle size={64} />
+                  <div key={item.id} className={"card flex items-center gap-3 transition " + (qty>0?"ring-2 ring-sixty-blue/40":"")}>
+                    {item.image
+                      ? <img src={item.image} alt="" className="h-16 w-16 rounded-2xl object-cover" />
+                      : <Bottle size={64} />}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="truncate font-bold">{item.sku_name}</p>
-                        {item.badge && <span className="grad rounded-full px-2 py-0.5 text-[11px] font-semibold text-white">{item.badge}</span>}
+                        <p className="truncate font-bold">{item.name}</p>
+                        {item.label && <span className="grad rounded-full px-2 py-0.5 text-[11px] font-semibold text-white">{item.label}</span>}
                       </div>
-                      <p className="text-xs text-gray-400">{item.size}</p>
+                      {item.description && <p className="truncate text-xs text-gray-400">{item.description}</p>}
                       <p className="text-sm font-semibold grad-text">{baht(item.price)}</p>
                     </div>
-                    <QtyStepper qty={qty} onChange={q=>setQty(item.sku_code,q)} />
+                    <QtyStepper qty={qty} onChange={q=>setQty(item.id,q)} />
                   </div>
                 );
               })}
@@ -254,7 +255,7 @@
               <div className="card">
                 <h3 className="mb-2 font-bold">รายการสินค้า</h3>
                 {lines.map(l => (
-                  <div key={l.item.sku_code} className="flex justify-between py-1 text-sm"><span>{l.item.sku_name} × {l.qty}</span><span className="font-medium">{baht(l.item.price*l.qty)}</span></div>
+                  <div key={l.item.id} className="flex justify-between py-1 text-sm"><span>{l.item.name} × {l.qty}</span><span className="font-medium">{baht(l.item.price*l.qty)}</span></div>
                 ))}
                 <div className="mt-2 border-t border-dashed pt-2">
                   {promo && promo.valid && typeof promo.discount_price==="number" && (
@@ -293,12 +294,15 @@
           <div className="mb-4 rounded-full bg-white/70 px-3 py-1.5 text-center text-xs text-sixty-blued shadow-sm ring-1 ring-sixty-blue/15">
             🧪 เวอร์ชันเดโม — ทำงานในเบราว์เซอร์ล้วน ไม่เชื่อมต่อระบบจริง
           </div>
-          <header className="mb-6 flex items-center gap-3">
-            <Bottle size={48} />
-            <div>
-              <h1 className="text-2xl font-extrabold leading-none"><span className="grad-text">6ty</span><span className="text-sixty-pink">°</span></h1>
-              <p className="text-[11px] font-semibold tracking-[.2em] text-gray-400">SIXTY DEGREES · NATURAL MINERAL WATER</p>
+          <header className="mb-6 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Bottle size={48} />
+              <div>
+                <h1 className="text-2xl font-extrabold leading-none"><span className="grad-text">6ty</span><span className="text-sixty-pink">°</span></h1>
+                <p className="text-[11px] font-semibold tracking-[.2em] text-gray-400">SIXTY DEGREES · NATURAL MINERAL WATER</p>
+              </div>
             </div>
+            <a href="admin.html" className="text-xs font-semibold text-gray-300 hover:text-sixty-blued">Admin</a>
           </header>
           {children}
         </main>
