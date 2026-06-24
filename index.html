@@ -60,11 +60,19 @@
     const STEPS = ["สินค้า", "ผู้รับ", "ชำระเงิน", "ยืนยัน"];
 
     // Products come from the shared Store (managed in admin.html), demo only.
-    const POSTAL = {
-      "10100": { province:"กรุงเทพมหานคร", district:"ป้อมปราบศัตรูพ่าย", subdistrict:"วัดเทพศิรินทร์", branch:"ปณ. พลับพลาไชย (เดโม)" },
-      "10200": { province:"กรุงเทพมหานคร", district:"พระนคร", subdistrict:"พระบรมมหาราชวัง", branch:"ปณ. ราชดำเนิน (เดโม)" },
-    };
-    const lookupPostal = (code) => POSTAL[code] || { province:"จังหวัดตัวอย่าง", district:"อำเภอตัวอย่าง", subdistrict:"ตำบลตัวอย่าง", branch:"ที่ทำการตัวอย่าง" };
+    // Real Thailand address data (~7,400 tambons), lazy-loaded & cached from CDN.
+    const GEO_URL = "https://cdn.jsdelivr.net/gh/thailand-geography-data/thailand-geography-json@1/src/geography.json";
+    let GEO = null;
+    async function loadGeo() {
+      if (!GEO) GEO = await fetch(GEO_URL).then(r => r.json());
+      return GEO;
+    }
+    async function lookupPostal(code) {
+      const data = await loadGeo();
+      return data
+        .filter(r => String(r.postalCode) === String(code))
+        .map(r => ({ subdistrict: r.subdistrictNameTh, district: r.districtNameTh, province: r.provinceNameTh }));
+    }
     const checkPromo = (code) => {
       const c = (code||"").trim().toUpperCase();
       if (c === "DEMO50") return { valid:true, code:c, message:"ใช้โค้ดได้ (เดโม) ลดเหลือราคาพิเศษ", discount_price:79 };
@@ -111,6 +119,7 @@
       const [address, setAddress] = useState("");
       const [note, setNote] = useState("");
       const [postalMsg, setPostalMsg] = useState("");
+      const [subOptions, setSubOptions] = useState([]);
       const [promoCode, setPromoCode] = useState("");
       const [promo, setPromo] = useState(null);
       const [invoice, setInvoice] = useState(false);
@@ -125,11 +134,23 @@
       const totalQty = useMemo(() => lines.reduce((s,l)=>s+l.qty,0), [lines]);
       const setQty = (sku, q) => setCart(c => ({...c, [sku]: Math.max(0, Math.min(999, q))}));
 
-      function onPostalBlur() {
-        if (!/^\d{5}$/.test(postal)) return;
-        const r = lookupPostal(postal);
-        setProv(r.province); setDist(r.district); setSub(r.subdistrict);
-        setPostalMsg("พื้นที่: " + r.district + ", " + r.province + " (" + r.branch + ")");
+      function pickSub(opt) { setSub(opt.subdistrict); setDist(opt.district); setProv(opt.province); }
+      async function runPostal(code) {
+        if (!/^\d{5}$/.test(code)) { setSubOptions([]); setPostalMsg(""); return; }
+        setPostalMsg("กำลังค้นหาที่อยู่…");
+        try {
+          const matches = await lookupPostal(code);
+          setSubOptions(matches);
+          if (matches.length === 0) { setPostalMsg("ไม่พบรหัสไปรษณีย์นี้"); return; }
+          setProv(matches[0].province); setDist(matches[0].district);
+          if (matches.length === 1) { setSub(matches[0].subdistrict); setPostalMsg(matches[0].district + ", " + matches[0].province); }
+          else { setSub(""); setPostalMsg("เลือกแขวง/ตำบลที่ถูกต้องด้านล่าง"); }
+        } catch (e) { setPostalMsg("โหลดข้อมูลที่อยู่ไม่สำเร็จ ลองใหม่"); }
+      }
+      function onPostalChange(v) {
+        const d = v.replace(/\D/g, "").slice(0, 5);
+        setPostal(d);
+        if (d.length === 5) runPostal(d); else { setSubOptions([]); setPostalMsg(""); }
       }
       function validate() {
         if (step===0) return lines.length ? "" : "กรุณาเลือกสินค้าอย่างน้อย 1 รายการ";
@@ -187,14 +208,14 @@
                       ? <img src={item.image} alt={item.name} onClick={()=>setLightbox(item)} className="h-16 w-16 cursor-zoom-in rounded-2xl object-cover" />
                       : <Bottle size={64} />}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate font-bold">{item.name}</p>
-                        {item.label && <span className="grad rounded-full px-2 py-0.5 text-[11px] font-semibold text-white">{item.label}</span>}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <p className="font-bold leading-tight">{item.name}</p>
+                        {item.label && <span className="grad shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold text-white">{item.label}</span>}
                       </div>
-                      {item.description && <p className="truncate text-xs text-gray-400">{item.description}</p>}
-                      <p className="text-sm font-semibold grad-text">{baht(item.price)}</p>
+                      {item.description && <p className="mt-0.5 text-xs leading-snug text-gray-400">{item.description}</p>}
+                      <p className="mt-0.5 text-sm font-semibold grad-text">{baht(item.price)}</p>
                     </div>
-                    <QtyStepper qty={qty} onChange={q=>setQty(item.id,q)} />
+                    <div className="shrink-0"><QtyStepper qty={qty} onChange={q=>setQty(item.id,q)} /></div>
                   </div>
                 );
               })}
@@ -213,14 +234,24 @@
                 <React.Fragment>
                   <div>
                     <label className="label">รหัสไปรษณีย์ *</label>
-                    <input className="field" inputMode="numeric" maxLength={5} value={postal} onChange={e=>setPostal(e.target.value.replace(/\D/g,""))} onBlur={onPostalBlur} />
+                    <input className="field" inputMode="numeric" maxLength={5} value={postal} onChange={e=>onPostalChange(e.target.value)} placeholder="เช่น 10100" />
                     {postalMsg && <p className="mt-1 text-xs text-sixty-blued">{postalMsg}</p>}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  {subOptions.length > 1 ? (
+                    <div>
+                      <label className="label">แขวง/ตำบล * <span className="font-normal text-gray-400">(เลือกจากรหัสไปรษณีย์)</span></label>
+                      <select className="field" value={sub} onChange={e=>{ const i=e.target.selectedIndex-1; if(i>=0) pickSub(subOptions[i]); }}>
+                        <option value="">— เลือกแขวง/ตำบล —</option>
+                        {subOptions.map((o,i)=> <option key={i} value={o.subdistrict}>{o.subdistrict} ({o.district})</option>)}
+                      </select>
+                    </div>
+                  ) : (
                     <div><label className="label">แขวง/ตำบล</label><input className="field" value={sub} onChange={e=>setSub(e.target.value)} /></div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
                     <div><label className="label">เขต/อำเภอ</label><input className="field" value={dist} onChange={e=>setDist(e.target.value)} /></div>
+                    <div><label className="label">จังหวัด</label><input className="field" value={prov} onChange={e=>setProv(e.target.value)} /></div>
                   </div>
-                  <div><label className="label">จังหวัด</label><input className="field" value={prov} onChange={e=>setProv(e.target.value)} /></div>
                   <div><label className="label">บ้านเลขที่ / รายละเอียดที่อยู่ *</label><textarea className="field" rows={2} value={address} onChange={e=>setAddress(e.target.value)} /></div>
                 </React.Fragment>
               )}
