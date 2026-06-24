@@ -164,6 +164,12 @@
     dcList: async function () { var r = await client().from("dc").select("*").order("dc_id", { ascending: true }); if (r.error) throw new Error(r.error.message); return r.data || []; },
     dcUpsert: async function (d) { var r = await client().from("dc").upsert({ dc_id: d.dc_id, dc_name: d.dc_name || "", province: d.province || "", status: d.status || "active" }).select(); if (r.error) throw new Error(r.error.message); return (r.data && r.data[0]) || d; },
     dcToggle: async function (id, cur) { var r = await client().from("dc").update({ status: cur === "active" ? "inactive" : "active" }).eq("dc_id", id); if (r.error) throw new Error(r.error.message); },
-    dcRemove: async function (id) { var r = await client().from("dc").delete().eq("dc_id", id); if (r.error) throw new Error(r.error.message); }
+    dcRemove: async function (id) { var r = await client().from("dc").delete().eq("dc_id", id); if (r.error) throw new Error(r.error.message); },
+
+    // ── Branches (สาขา) CRUD ──
+    branchesList: async function () { var r = await client().from("branches").select("*").order("branch_code", { ascending: true }); if (r.error) throw new Error(r.error.message); return r.data || []; },
+    branchUpsert: async function (b) { var r = await client().from("branches").upsert({ branch_id: b.branch_id, branch_code: b.branch_code || "", branch_name: b.branch_name || "", province: b.province || "", active: b.active !== false, affiliation: b.affiliation || "", hub: b.hub || "" }).select(); if (r.error) throw new Error(r.error.message); return (r.data && r.data[0]) || b; },
+    branchToggle: async function (id, cur) { var r = await client().from("branches").update({ active: !cur }).eq("branch_id", id); if (r.error) throw new Error(r.error.message); },
+    branchRemove: async function (id) { var r = await client().from("branches").delete().eq("branch_id", id); if (r.error) throw new Error(r.error.message); }
   };
 })();
