@@ -49,6 +49,7 @@
     return {
       id: p.id, name: p.name || "", description: p.description || "",
       price: Number(p.price) || 0, label: p.label || "", product_type: p.product_type || "",
+      packs: Number(p.packs) || 1,
       image: p.image || "", enabled: p.enabled !== false,
       display_order: Number(p.display_order) || 0
     };

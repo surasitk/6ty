@@ -33,12 +33,12 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="store.js?v=5"></script>
+  <script src="store.js?v=6"></script>
 
   <script type="text/plain" id="app-src">
     const { useState, useEffect } = React;
     const baht = (n) => "฿" + Number(n || 0).toLocaleString("th-TH");
-    const emptyForm = () => ({ id:"", name:"", description:"", price:"", label:"", product_type:"", image:"", enabled:true });
+    const emptyForm = () => ({ id:"", name:"", description:"", price:"", label:"", product_type:"", packs:"1", image:"", enabled:true });
 
     // Downscale an uploaded image to keep localStorage small.
     function fileToScaledDataURL(file, maxSide) {
@@ -150,7 +150,7 @@
         finally { setBusy(false); }
       }
 
-      function edit(p) { setForm({ ...p, price: String(p.price) }); setAddingType(false); window.scrollTo({ top:0, behavior:"smooth" }); }
+      function edit(p) { setForm({ ...p, price: String(p.price), packs: String(p.packs || 1) }); setAddingType(false); window.scrollTo({ top:0, behavior:"smooth" }); }
       async function toggle(id) { try { await Store.toggle(id); refresh(); } catch (e) { alert(e.message); } }
       async function remove(id) { if (confirm("ลบสินค้านี้?")) { try { await Store.remove(id); refresh(); } catch (e) { alert(e.message); } } }
 
@@ -222,6 +222,10 @@
                   </div>
                 </div>
                 <div>
+                  <label className="label">จำนวนแพ็คที่ได้เมื่อซื้อ 1 ชิ้น <span className="font-normal text-gray-400">(แพ็ค/ชิ้น)</span></label>
+                  <input className="field" inputMode="numeric" value={form.packs} onChange={e=>set("packs", e.target.value.replace(/\D/g,""))} placeholder="เช่น 38" />
+                </div>
+                <div>
                   <label className="label">ประเภทสินค้า (product_type)</label>
                   {!addingType ? (
                     <select className="field" value={form.product_type}
@@ -279,6 +283,7 @@
                       <p className="truncate font-bold">{p.name}</p>
                       {p.label && <span className="grad rounded-full px-2 py-0.5 text-[11px] font-semibold text-white">{p.label}</span>}
                       {p.product_type && <span className="rounded-full bg-sixty-mist px-2 py-0.5 text-[11px] font-semibold text-sixty-blued">ประเภท {p.product_type}</span>}
+                      {p.packs>1 && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500">{p.packs} แพ็ค/ชิ้น</span>}
                     </div>
                     {p.description && <p className="truncate text-xs text-gray-400">{p.description}</p>}
                     <p className="text-sm font-semibold grad-text">{baht(p.price)}</p>
