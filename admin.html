@@ -32,7 +32,8 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="store.js?v=4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="store.js?v=5"></script>
 
   <script type="text/plain" id="app-src">
     const { useState, useEffect } = React;
@@ -91,6 +92,7 @@
       const [cfg, setCfg] = useState(Store.imageConfig());
       const [showCfg, setShowCfg] = useState(false);
       const [uploadingId, setUploadingId] = useState(null);
+      const [ready, setReady] = useState(false);
       const cloudReady = !!(cfg.cloud && cfg.preset);
       function saveCfg() {
         Store.setImageConfig({ cloud: (cfg.cloud||"").trim(), preset: (cfg.preset||"").trim() });
@@ -99,9 +101,9 @@
       }
 
       const refresh = () => setProducts(Store.all());
-      useEffect(() => { refresh(); }, []);
-      const moveUp = (id) => { Store.move(id, -1); refresh(); };
-      const moveDown = (id) => { Store.move(id, +1); refresh(); };
+      useEffect(() => { Store.init().then(r => { if (!r.ok) setFlash("⚠️ เชื่อม Supabase ไม่ได้ ใช้ข้อมูลสำรองชั่วคราว"); refresh(); setReady(true); }); }, []);
+      const moveUp = async (id) => { try { await Store.move(id, -1); refresh(); } catch (e) { alert(e.message); } };
+      const moveDown = async (id) => { try { await Store.move(id, +1); refresh(); } catch (e) { alert(e.message); } };
 
       // Change a product's image directly from the list (uploads to Cloudinary if set).
       async function changeImage(p, file) {
@@ -109,7 +111,7 @@
         setUploadingId(p.id);
         try {
           const url = cloudReady ? await uploadToCloudinary(file, cfg) : await fileToScaledDataURL(file, 640);
-          Store.upsert(Object.assign({}, p, { image: url }));
+          await Store.upsert(Object.assign({}, p, { image: url }));
           refresh();
         } catch (e) { alert("อัปโหลดรูปไม่สำเร็จ: " + (e && e.message ? e.message : e)); }
         finally { setUploadingId(null); }
@@ -131,23 +133,26 @@
         } finally { setBusy(false); }
       }
 
-      function save() {
+      async function save() {
         if (!form.name.trim()) return setFlash("กรุณากรอกชื่อสินค้า");
         if (form.price === "" || isNaN(Number(form.price))) return setFlash("กรุณากรอกราคาเป็นตัวเลข");
+        const isEdit = !!form.id;
         const p = { ...form, name: form.name.trim(), description: form.description.trim(), price: Number(form.price) };
+        setBusy(true);
         try {
-          Store.upsert(p);
+          await Store.upsert(p);
           setForm(emptyForm());
           setAddingType(false);
           refresh();
-          setFlash(form.id ? "อัปเดตสินค้าแล้ว ✓" : "เพิ่มสินค้าแล้ว ✓");
+          setFlash(isEdit ? "อัปเดตสินค้าแล้ว ✓" : "เพิ่มสินค้าแล้ว ✓");
           setTimeout(() => setFlash(""), 2500);
-        } catch { setFlash("บันทึกไม่สำเร็จ (พื้นที่เต็ม)"); }
+        } catch (e) { setFlash("บันทึกไม่สำเร็จ: " + (e && e.message ? e.message : e)); }
+        finally { setBusy(false); }
       }
 
       function edit(p) { setForm({ ...p, price: String(p.price) }); setAddingType(false); window.scrollTo({ top:0, behavior:"smooth" }); }
-      function toggle(id) { Store.toggle(id); refresh(); }
-      function remove(id) { if (confirm("ลบสินค้านี้?")) { Store.remove(id); refresh(); } }
+      async function toggle(id) { try { await Store.toggle(id); refresh(); } catch (e) { alert(e.message); } }
+      async function remove(id) { if (confirm("ลบสินค้านี้?")) { try { await Store.remove(id); refresh(); } catch (e) { alert(e.message); } } }
 
       return (
         <main className="mx-auto w-full max-w-3xl px-4 py-6">

@@ -50,7 +50,8 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="store.js?v=4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="store.js?v=5"></script>
 
   <!-- App source kept as text/plain so Babel does NOT auto-run it with the
        "automatic" JSX runtime (which emits `import` and breaks classic scripts). -->
@@ -108,7 +109,7 @@
     function App() {
       const [step, setStep] = useState(0);
       const [catalog, setCatalog] = useState([]);
-      useEffect(() => { setCatalog(Store.enabled()); }, []);
+      useEffect(() => { Store.init().then(() => setCatalog(Store.enabled())); }, []);
       const [cart, setCart] = useState({});
       const [lightbox, setLightbox] = useState(null);
       const [customer, setCustomer] = useState("");

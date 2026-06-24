@@ -1,10 +1,18 @@
-/* 6ty° demo data store — products persisted in the browser (localStorage).
- * Shared by the storefront (index.html) and the admin page (admin.html).
- * No backend: this is a front-end-only demo. */
+/* 6ty° data store — products live in a shared Supabase table so every device
+ * (admin + storefront, desktop + mobile + customers) sees the same catalog.
+ *
+ * Requires @supabase/supabase-js to be loaded before this file.
+ * The publishable key below is safe to ship in client code (it is NOT a secret).
+ * Reads come from an in-memory cache filled by Store.init(); call init() once on
+ * page load before reading. Mutations write to Supabase and update the cache. */
 (function () {
-  var KEY = "6ty_products_v1";
-  var TKEY = "6ty_types_v1";
-  var CFGKEY = "6ty_imgcfg_v1";
+  var SUPABASE_URL = "https://pqyqbugbgnkiizjsjyqs.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_xEayc1gOAcg9aFEByv2cqg_hPz6-bre";
+  var TABLE = "products";
+
+  var TKEY = "6ty_types_v1";       // custom product types (local convenience)
+  var CFGKEY = "6ty_imgcfg_v1";    // Cloudinary config (per-admin, local)
+  var LEGACYKEY = "6ty_products_v1"; // old localStorage products (for one-time migration)
   var DEFAULT_TYPES = ["520", "1250"];
 
   var SEED = [
@@ -13,118 +21,138 @@
     { id: "6TY-72", name: "6ty° ยกลัง 72 ขวด", description: "น้ำแร่ธรรมชาติจากน้ำพุร้อน 350 มล. × 72 ขวด", price: 960, label: "คุ้มสุด",  product_type: "1250", display_order: 3, image: "", enabled: true }
   ];
 
-  var LABELS = ["", "6 PACK", "ยอดนิยม", "คุ้มสุด", "ใหม่", "ลดราคา"];
+  var sb = null;
+  var _cache = [];
+  var _ready = false;
 
-  // Backfill fields for products saved by older versions (e.g. no display_order).
-  function normalize(arr) {
-    var needsOrder = arr.some(function (p) { return typeof p.display_order !== "number"; });
-    if (needsOrder) arr.forEach(function (p, i) { p.display_order = i + 1; });
-    arr.forEach(function (p) {
-      if (p.product_type === undefined) p.product_type = "";
-      if (p.label === undefined) p.label = "";
-      if (p.enabled === undefined) p.enabled = true;
-    });
-    if (needsOrder) { try { localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) {} }
-    return arr;
+  function client() {
+    if (!sb) {
+      if (!window.supabase) throw new Error("ยังไม่ได้โหลด Supabase library");
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    }
+    return sb;
   }
 
-  function readRaw() {
-    try {
-      var raw = localStorage.getItem(KEY);
-      if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) return normalize(arr); }
-    } catch (e) { /* ignore */ }
-    write(SEED);
-    return SEED.map(function (p) { return Object.assign({}, p); });
-  }
-
-  function write(list) {
-    try { localStorage.setItem(KEY, JSON.stringify(list)); }
-    catch (e) { alert("บันทึกไม่สำเร็จ: พื้นที่เก็บข้อมูลในเบราว์เซอร์เต็ม (รูปอาจใหญ่เกินไป)"); throw e; }
-  }
-
-  function sorted() {
-    return readRaw().slice().sort(function (a, b) {
-      return (a.display_order || 0) - (b.display_order || 0);
-    });
-  }
-
-  function maxOrder() {
-    return readRaw().reduce(function (m, p) { return Math.max(m, p.display_order || 0); }, 0);
-  }
-
-  function readCustomTypes() {
-    try { var t = JSON.parse(localStorage.getItem(TKEY)); if (Array.isArray(t)) return t; } catch (e) {}
-    return [];
-  }
-
+  function sortCache() { _cache.sort(function (a, b) { return (a.display_order || 0) - (b.display_order || 0); }); }
+  function maxOrder() { return _cache.reduce(function (m, p) { return Math.max(m, p.display_order || 0); }, 0); }
   function genId() { return "P" + Date.now().toString(36).toUpperCase(); }
 
-  window.Store = {
-    LABELS: LABELS,
+  function readLegacy() {
+    try { var a = JSON.parse(localStorage.getItem(LEGACYKEY)); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+  }
+  function readCustomTypes() {
+    try { var t = JSON.parse(localStorage.getItem(TKEY)); return Array.isArray(t) ? t : []; } catch (e) { return []; }
+  }
 
-    // Distinct product types: defaults ∪ saved custom ∪ those used by products.
+  // Normalise a product object to the table columns.
+  function clean(p) {
+    return {
+      id: p.id, name: p.name || "", description: p.description || "",
+      price: Number(p.price) || 0, label: p.label || "", product_type: p.product_type || "",
+      image: p.image || "", enabled: p.enabled !== false,
+      display_order: Number(p.display_order) || 0
+    };
+  }
+
+  window.Store = {
+    LABELS: ["", "6 PACK", "ยอดนิยม", "คุ้มสุด", "ใหม่", "ลดราคา"],
+    ready: function () { return _ready; },
+
+    // Load all products into the cache. Falls back gracefully on error.
+    init: async function () {
+      try {
+        var res = await client().from(TABLE).select("*").order("display_order", { ascending: true });
+        if (res.error) throw res.error;
+        _cache = res.data || [];
+        // One-time migration: if the table is empty but this browser has old
+        // localStorage products, push them up so nothing is lost.
+        if (_cache.length === 0) {
+          var legacy = readLegacy();
+          if (legacy.length) {
+            var rows = legacy.map(function (p, i) {
+              var c = clean(p); if (!c.display_order) c.display_order = i + 1; return c;
+            });
+            var up = await client().from(TABLE).upsert(rows).select();
+            if (!up.error) _cache = up.data || rows;
+          }
+        }
+        // If still empty, seed defaults so the store isn't blank.
+        if (_cache.length === 0) {
+          var seedRows = SEED.map(clean);
+          var sres = await client().from(TABLE).upsert(seedRows).select();
+          _cache = (sres && !sres.error && sres.data) ? sres.data : seedRows;
+        }
+        _ready = true;
+        sortCache();
+        return { ok: true };
+      } catch (e) {
+        // Offline / not configured → fall back to localStorage so the demo still runs.
+        _cache = readLegacy();
+        if (_cache.length === 0) _cache = SEED.map(function (p) { return Object.assign({}, p); });
+        _ready = true;
+        sortCache();
+        return { ok: false, error: String(e && e.message ? e.message : e) };
+      }
+    },
+
+    all: function () { sortCache(); return _cache.map(function (p) { return Object.assign({}, p); }); },
+    enabled: function () { return this.all().filter(function (p) { return p.enabled; }); },
+    get: function (id) { var f = _cache.filter(function (p) { return p.id === id; })[0]; return f ? Object.assign({}, f) : null; },
+
     types: function () {
-      var set = {};
-      var out = [];
-      DEFAULT_TYPES.concat(readCustomTypes()).forEach(function (t) {
-        if (t && !set[t]) { set[t] = 1; out.push(t); }
-      });
-      readRaw().forEach(function (p) {
-        var t = p.product_type;
-        if (t && !set[t]) { set[t] = 1; out.push(t); }
-      });
+      var set = {}, out = [];
+      DEFAULT_TYPES.concat(readCustomTypes()).forEach(function (t) { if (t && !set[t]) { set[t] = 1; out.push(t); } });
+      _cache.forEach(function (p) { var t = p.product_type; if (t && !set[t]) { set[t] = 1; out.push(t); } });
       return out;
     },
     addType: function (t) {
-      t = (t || "").trim();
-      if (!t) return;
+      t = (t || "").trim(); if (!t) return;
       var cur = readCustomTypes();
-      if (cur.indexOf(t) < 0 && DEFAULT_TYPES.indexOf(t) < 0) {
-        cur.push(t);
-        localStorage.setItem(TKEY, JSON.stringify(cur));
-      }
+      if (cur.indexOf(t) < 0 && DEFAULT_TYPES.indexOf(t) < 0) { cur.push(t); localStorage.setItem(TKEY, JSON.stringify(cur)); }
     },
 
-    all: function () { return sorted(); },
-    enabled: function () { return sorted().filter(function (p) { return p.enabled; }); },
-    get: function (id) { return readRaw().filter(function (p) { return p.id === id; })[0] || null; },
-
-    upsert: function (product) {
-      var list = readRaw();
-      if (!product.id) {
-        product.id = genId();
-        product.display_order = maxOrder() + 1; // always unique, appended last
-      }
-      if (product.product_type) this.addType(product.product_type);
-      var idx = -1;
-      for (var i = 0; i < list.length; i++) if (list[i].id === product.id) idx = i;
-      if (idx >= 0) list[idx] = product; else list.push(product);
-      write(list);
-      return product;
-    },
-
-    // Move a product up (-1) or down (+1) in display order by swapping with its neighbour.
-    move: function (id, dir) {
-      var list = sorted();
-      var i = -1;
-      for (var k = 0; k < list.length; k++) if (list[k].id === id) i = k;
-      var j = i + dir;
-      if (i < 0 || j < 0 || j >= list.length) return;
-      var a = list[i], b = list[j];
-      var tmp = a.display_order; a.display_order = b.display_order; b.display_order = tmp;
-      write(list); // list holds references into the raw objects' clones; persist them
-    },
-
-    // Image storage config (Cloudinary). { cloud, preset }
     imageConfig: function () { try { return JSON.parse(localStorage.getItem(CFGKEY)) || {}; } catch (e) { return {}; } },
     setImageConfig: function (cfg) { localStorage.setItem(CFGKEY, JSON.stringify(cfg || {})); },
 
-    toggle: function (id) {
-      var list = readRaw();
-      list.forEach(function (p) { if (p.id === id) p.enabled = !p.enabled; });
-      write(list);
+    upsert: async function (product) {
+      if (!product.id) { product.id = genId(); product.display_order = maxOrder() + 1; }
+      if (product.product_type) this.addType(product.product_type);
+      var row = clean(product);
+      var res = await client().from(TABLE).upsert(row).select();
+      if (res.error) throw new Error(res.error.message);
+      var saved = (res.data && res.data[0]) || row;
+      var i = _cache.findIndex(function (p) { return p.id === saved.id; });
+      if (i >= 0) _cache[i] = saved; else _cache.push(saved);
+      sortCache();
+      return saved;
     },
-    remove: function (id) { write(readRaw().filter(function (p) { return p.id !== id; })); },
-    reset: function () { write(SEED); localStorage.removeItem(TKEY); }
+
+    toggle: async function (id) {
+      var p = _cache.filter(function (x) { return x.id === id; })[0];
+      if (!p) return;
+      var val = !p.enabled;
+      var res = await client().from(TABLE).update({ enabled: val }).eq("id", id);
+      if (res.error) throw new Error(res.error.message);
+      p.enabled = val;
+    },
+
+    remove: async function (id) {
+      var res = await client().from(TABLE).delete().eq("id", id);
+      if (res.error) throw new Error(res.error.message);
+      _cache = _cache.filter(function (p) { return p.id !== id; });
+    },
+
+    // Swap display_order with the neighbour in the given direction (-1 up / +1 down).
+    move: async function (id, dir) {
+      sortCache();
+      var i = _cache.findIndex(function (p) { return p.id === id; });
+      var j = i + dir;
+      if (i < 0 || j < 0 || j >= _cache.length) return;
+      var a = _cache[i], b = _cache[j];
+      var tmp = a.display_order; a.display_order = b.display_order; b.display_order = tmp;
+      var res = await client().from(TABLE).upsert([clean(a), clean(b)]);
+      if (res.error) throw new Error(res.error.message);
+      sortCache();
+    }
   };
 })();
