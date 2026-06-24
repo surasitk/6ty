@@ -102,6 +102,7 @@
       const [catalog, setCatalog] = useState([]);
       useEffect(() => { setCatalog(Store.enabled()); }, []);
       const [cart, setCart] = useState({});
+      const [lightbox, setLightbox] = useState(null);
       const [customer, setCustomer] = useState("");
       const [phone, setPhone] = useState("");
       const [pickup, setPickup] = useState("delivery");
@@ -183,7 +184,7 @@
                 return (
                   <div key={item.id} className={"card flex items-center gap-3 transition " + (qty>0?"ring-2 ring-sixty-blue/40":"")}>
                     {item.image
-                      ? <img src={item.image} alt="" className="h-16 w-16 rounded-2xl object-cover" />
+                      ? <img src={item.image} alt={item.name} onClick={()=>setLightbox(item)} className="h-16 w-16 cursor-zoom-in rounded-2xl object-cover" />
                       : <Bottle size={64} />}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -284,6 +285,26 @@
                 : <button className="btn-grad px-7 py-3" onClick={submit}>ยืนยันสั่งซื้อ</button>}
             </div>
           </div>
+
+          {lightbox && (
+            <div onClick={()=>setLightbox(null)} role="dialog" aria-modal="true"
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+              <button onClick={()=>setLightbox(null)} aria-label="ปิด"
+                className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/90 text-2xl font-bold text-gray-700 shadow-lg active:scale-95">✕</button>
+              <div className="w-full max-w-sm" onClick={e=>e.stopPropagation()}>
+                <img src={lightbox.image} alt={lightbox.name} className="mx-auto max-h-[68vh] w-auto rounded-2xl object-contain shadow-2xl" />
+                <div className="mt-3 rounded-2xl bg-white p-4 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <p className="font-bold">{lightbox.name}</p>
+                    {lightbox.label && <span className="grad rounded-full px-2 py-0.5 text-[11px] font-semibold text-white">{lightbox.label}</span>}
+                  </div>
+                  {lightbox.description && <p className="mt-0.5 text-sm text-gray-500">{lightbox.description}</p>}
+                  <p className="mt-1 font-extrabold grad-text">{baht(lightbox.price)}</p>
+                </div>
+                <p className="mt-3 text-center text-xs text-white/70">แตะที่ว่างเพื่อปิด</p>
+              </div>
+            </div>
+          )}
         </Shell>
       );
     }
