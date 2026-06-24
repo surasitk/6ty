@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>6Ty x ไปรษณีย์ไทย — สั่งซื้อสินค้า (เดโม)</title>
+  <meta name="description" content="เดโมหน้าจองสินค้า 6Ty — ทำงานในเบราว์เซอร์ล้วน ไม่ต่อระบบจริง" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        colors: { brand: { DEFAULT: "#e30613", dark: "#b3040f", soft: "#fff1f2" } },
+        fontFamily: { sans: ["Sarabun", "system-ui", "sans-serif"] },
+      } },
+    };
+  </script>
+  <style>
+    body { font-family: "Sarabun", system-ui, sans-serif; }
+    .field { width:100%; border:1px solid #d1d5db; border-radius:.75rem; padding:.75rem 1rem; outline:none; font-size:1rem; }
+    .field:focus { border-color:#e30613; box-shadow:0 0 0 3px rgba(227,6,19,.15); }
+    .label { display:block; margin-bottom:.25rem; font-size:.875rem; font-weight:500; color:#374151; }
+    .card { border:1px solid #e5e7eb; border-radius:1rem; background:#fff; padding:1rem; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div id="root"></div>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useMemo } = React;
+    const baht = (n) => "฿" + Number(n || 0).toLocaleString("th-TH");
+    const STEPS = ["สินค้า", "ผู้รับ", "ชำระเงิน", "ยืนยัน"];
+
+    // ── demo data (no backend) ──
+    const CATALOG = [
+      { sku_code:"DEMO-520",  sku_name:"สินค้าตัวอย่าง ขนาด 520",  price:290, badge:"ยอดนิยม" },
+      { sku_code:"DEMO-1250", sku_name:"สินค้าตัวอย่าง ขนาด 1250", price:590, badge:"คุ้มสุด" },
+      { sku_code:"DEMO-SET",  sku_name:"เซ็ตรวม 520 + 1250",        price:820, badge:"" },
+    ];
+    const POSTAL = {
+      "10100": { province:"กรุงเทพมหานคร", district:"ป้อมปราบศัตรูพ่าย", subdistrict:"วัดเทพศิรินทร์", branch:"ปณ. พลับพลาไชย (เดโม)" },
+      "10200": { province:"กรุงเทพมหานคร", district:"พระนคร", subdistrict:"พระบรมมหาราชวัง", branch:"ปณ. ราชดำเนิน (เดโม)" },
+    };
+    function lookupPostal(code) {
+      return POSTAL[code] || { province:"จังหวัดตัวอย่าง", district:"อำเภอตัวอย่าง", subdistrict:"ตำบลตัวอย่าง", branch:"ที่ทำการตัวอย่าง" };
+    }
+    function checkPromo(code) {
+      const c = (code||"").trim().toUpperCase();
+      if (c === "DEMO50") return { valid:true, code:c, message:"ใช้โค้ดได้ (เดโม) ลดเหลือราคาพิเศษ", discount_price:250 };
+      return { valid:false, code:c, message:"โค้ดไม่ถูกต้อง (เดโม: ลอง DEMO50)" };
+    }
+
+    function QtyStepper({ qty, onChange }) {
+      return (
+        <div className="flex items-center gap-2">
+          <button className="h-9 w-9 rounded-full border border-gray-300 text-lg font-bold disabled:opacity-40"
+            onClick={() => onChange(qty-1)} disabled={qty<=0}>−</button>
+          <span className="w-6 text-center font-semibold">{qty}</span>
+          <button className="h-9 w-9 rounded-full bg-brand text-lg font-bold text-white"
+            onClick={() => onChange(qty+1)}>+</button>
+        </div>
+      );
+    }
+    function Chip({ active, onClick, children }) {
+      return (
+        <button onClick={onClick}
+          className={"rounded-xl border px-4 py-3 text-sm font-medium " +
+            (active ? "border-brand bg-brand-soft text-brand" : "border-gray-300 bg-white text-gray-600")}>
+          {children}
+        </button>
+      );
+    }
+
+    function App() {
+      const [step, setStep] = useState(0);
+      const [cart, setCart] = useState({});
+      const [customer, setCustomer] = useState("");
+      const [phone, setPhone] = useState("");
+      const [pickup, setPickup] = useState("delivery");
+      const [postal, setPostal] = useState("");
+      const [sub, setSub] = useState(""); const [dist, setDist] = useState(""); const [prov, setProv] = useState("");
+      const [address, setAddress] = useState("");
+      const [note, setNote] = useState("");
+      const [postalMsg, setPostalMsg] = useState("");
+      const [promoCode, setPromoCode] = useState("");
+      const [promo, setPromo] = useState(null);
+      const [invoice, setInvoice] = useState(false);
+      const [invoiceName, setInvoiceName] = useState("");
+      const [slipName, setSlipName] = useState("");
+      const [err, setErr] = useState("");
+      const [done, setDone] = useState(null);
+
+      const lines = useMemo(() => Object.entries(cart).filter(([,q])=>q>0)
+        .map(([sku,qty]) => ({ item: CATALOG.find(c=>c.sku_code===sku), qty })), [cart]);
+      const subtotal = useMemo(() => lines.reduce((s,l)=>s+l.item.price*l.qty,0), [lines]);
+      const total = useMemo(() => (promo && promo.valid && typeof promo.discount_price==="number") ? promo.discount_price : subtotal, [subtotal, promo]);
+      const totalQty = useMemo(() => lines.reduce((s,l)=>s+l.qty,0), [lines]);
+
+      const setQty = (sku, q) => setCart(c => ({...c, [sku]: Math.max(0, Math.min(999, q))}));
+
+      function onPostalBlur() {
+        if (!/^\d{5}$/.test(postal)) return;
+        const r = lookupPostal(postal);
+        setProv(r.province); setDist(r.district); setSub(r.subdistrict);
+        setPostalMsg("พื้นที่: " + r.district + ", " + r.province + " (" + r.branch + ")");
+      }
+      function validate() {
+        if (step===0) return lines.length ? "" : "กรุณาเลือกสินค้าอย่างน้อย 1 รายการ";
+        if (step===1) {
+          if (!customer.trim()) return "กรุณากรอกชื่อผู้รับ";
+          if (!/^0\d{8,9}$/.test(phone)) return "เบอร์โทรไม่ถูกต้อง";
+          if (pickup==="delivery") { if(!/^\d{5}$/.test(postal)) return "กรุณากรอกรหัสไปรษณีย์"; if(!address.trim()) return "กรุณากรอกที่อยู่"; }
+          return "";
+        }
+        if (step===2) { if(!slipName) return "กรุณาแนบสลิป"; if(invoice && !invoiceName.trim()) return "กรุณากรอกชื่อใบกำกับ"; return ""; }
+        return "";
+      }
+      function next() { const e=validate(); if(e){setErr(e);return;} setErr(""); setStep(s=>Math.min(3,s+1)); }
+      function back() { setErr(""); setStep(s=>Math.max(0,s-1)); }
+      function submit() {
+        const id = "DEMO-" + new Date().toISOString().slice(0,19).replace(/[-:T]/g,"");
+        setDone({ order_id:id, amount:total });
+      }
+
+      if (done) {
+        return (
+          <Shell>
+            <div className="card text-center">
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-3xl">✓</div>
+              <h2 className="text-xl font-bold">รับออเดอร์เรียบร้อย (เดโม)</h2>
+              <p className="mt-1 text-gray-600">เลขออเดอร์ <span className="font-mono font-semibold">{done.order_id}</span></p>
+              <p className="mt-1 text-gray-600">ยอดรวม {baht(done.amount)}</p>
+              <p className="mt-3 text-sm text-gray-500">นี่คือเดโม — ไม่ได้บันทึกข้อมูลจริง</p>
+              <button className="mt-5 rounded-xl border border-gray-300 bg-white px-5 py-3 font-semibold"
+                onClick={()=>{setDone(null);setCart({});setStep(0);setPromo(null);setPromoCode("");setSlipName("");}}>สั่งใหม่</button>
+            </div>
+          </Shell>
+        );
+      }
+
+      return (
+        <Shell>
+          {/* stepper */}
+          <ol className="mb-5 flex items-center gap-1">
+            {STEPS.map((label,i) => (
+              <li key={label} className="flex flex-1 flex-col items-center gap-1">
+                <div className={"flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold " + (i<=step?"bg-brand text-white":"bg-gray-200 text-gray-500")}>{i+1}</div>
+                <span className={"text-xs " + (i===step?"font-semibold text-brand":"text-gray-400")}>{label}</span>
+              </li>
+            ))}
+          </ol>
+
+          {step===0 && (
+            <div className="space-y-3">
+              {CATALOG.map(item => {
+                const qty = cart[item.sku_code] || 0;
+                return (
+                  <div key={item.sku_code} className="card flex items-center gap-3">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-brand-soft text-brand font-bold">6Ty</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-semibold">{item.sku_name}</p>
+                        {item.badge && <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs text-brand">{item.badge}</span>}
+                      </div>
+                      <p className="text-sm text-gray-500">{baht(item.price)}</p>
+                    </div>
+                    <QtyStepper qty={qty} onChange={q=>setQty(item.sku_code,q)} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {step===1 && (
+            <div className="space-y-4">
+              <div><label className="label">ชื่อ-นามสกุลผู้รับ *</label><input className="field" value={customer} onChange={e=>setCustomer(e.target.value)} /></div>
+              <div><label className="label">เบอร์โทรศัพท์ *</label><input className="field" inputMode="numeric" placeholder="0812345678" value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,""))} /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <Chip active={pickup==="delivery"} onClick={()=>setPickup("delivery")}>จัดส่งถึงบ้าน</Chip>
+                <Chip active={pickup==="pickup_self"} onClick={()=>setPickup("pickup_self")}>รับเองที่ไปรษณีย์</Chip>
+              </div>
+              {pickup==="delivery" && (
+                <React.Fragment>
+                  <div>
+                    <label className="label">รหัสไปรษณีย์ *</label>
+                    <input className="field" inputMode="numeric" maxLength={5} value={postal} onChange={e=>setPostal(e.target.value.replace(/\D/g,""))} onBlur={onPostalBlur} />
+                    {postalMsg && <p className="mt-1 text-xs text-gray-500">{postalMsg}</p>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="label">แขวง/ตำบล</label><input className="field" value={sub} onChange={e=>setSub(e.target.value)} /></div>
+                    <div><label className="label">เขต/อำเภอ</label><input className="field" value={dist} onChange={e=>setDist(e.target.value)} /></div>
+                  </div>
+                  <div><label className="label">จังหวัด</label><input className="field" value={prov} onChange={e=>setProv(e.target.value)} /></div>
+                  <div><label className="label">บ้านเลขที่ / รายละเอียดที่อยู่ *</label><textarea className="field" rows={2} value={address} onChange={e=>setAddress(e.target.value)} /></div>
+                </React.Fragment>
+              )}
+              <div><label className="label">หมายเหตุ (ไม่บังคับ)</label><input className="field" value={note} onChange={e=>setNote(e.target.value)} /></div>
+            </div>
+          )}
+
+          {step===2 && (
+            <div className="space-y-4">
+              <div className="card">
+                <label className="label">โค้ดส่วนลด</label>
+                <div className="flex gap-2">
+                  <input className="field" value={promoCode} onChange={e=>setPromoCode(e.target.value.toUpperCase())} placeholder="ลอง DEMO50" />
+                  <button className="shrink-0 rounded-xl border border-gray-300 bg-white px-5 font-semibold" onClick={()=>setPromo(checkPromo(promoCode))}>ใช้โค้ด</button>
+                </div>
+                {promo && <p className={"mt-2 text-sm " + (promo.valid?"text-green-600":"text-red-600")}>{promo.valid?"✓ ":"✕ "}{promo.message}</p>}
+              </div>
+              <div className="card">
+                <label className="label">แนบสลิปการโอนเงิน *</label>
+                <input type="file" accept="image/*" className="block w-full text-sm" onChange={e=>setSlipName(e.target.files[0]?.name||"")} />
+                {slipName && <p className="mt-2 text-xs text-gray-500">ไฟล์: {slipName}</p>}
+                <p className="mt-2 text-xs text-gray-500">ยอดที่ต้องโอน: <b>{baht(total)}</b></p>
+              </div>
+              <div className="card">
+                <label className="flex items-center gap-2"><input type="checkbox" checked={invoice} onChange={e=>setInvoice(e.target.checked)} /><span className="font-medium">ต้องการใบกำกับภาษี</span></label>
+                {invoice && <input className="field mt-3" placeholder="ชื่อ/บริษัท" value={invoiceName} onChange={e=>setInvoiceName(e.target.value)} />}
+              </div>
+            </div>
+          )}
+
+          {step===3 && (
+            <div className="space-y-3">
+              <div className="card">
+                <h3 className="mb-2 font-semibold">รายการสินค้า</h3>
+                {lines.map(l => (
+                  <div key={l.item.sku_code} className="flex justify-between py-1 text-sm"><span>{l.item.sku_name} × {l.qty}</span><span>{baht(l.item.price*l.qty)}</span></div>
+                ))}
+                <div className="mt-2 border-t pt-2">
+                  {promo && promo.valid && typeof promo.discount_price==="number" && (
+                    <div className="flex justify-between text-sm text-gray-500"><span>ราคาปกติ</span><span className="line-through">{baht(subtotal)}</span></div>
+                  )}
+                  <div className="flex justify-between font-bold"><span>ยอดชำระ</span><span className="text-brand">{baht(total)}</span></div>
+                </div>
+              </div>
+              <div className="card text-sm">
+                <h3 className="mb-2 font-semibold">ผู้รับ</h3>
+                <p>{customer} · {phone}</p>
+                {pickup==="delivery" ? <p className="text-gray-600">{address} {sub} {dist} {prov} {postal}</p> : <p className="text-gray-600">รับเองที่ที่ทำการไปรษณีย์</p>}
+                {invoice && <p className="mt-1 text-gray-600">ออกใบกำกับ: {invoiceName}</p>}
+              </div>
+            </div>
+          )}
+
+          {err && <p className="mt-4 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-600">{err}</p>}
+
+          <div className="fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white/95 backdrop-blur">
+            <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-3">
+              {step>0 && <button className="rounded-xl border border-gray-300 bg-white px-5 py-3 font-semibold" onClick={back}>ย้อนกลับ</button>}
+              <div className="flex-1 text-sm">{totalQty>0 && <span className="text-gray-500">{totalQty} ชิ้น · <b className="text-gray-900">{baht(total)}</b></span>}</div>
+              {step<3
+                ? <button className="rounded-xl bg-brand px-6 py-3 font-semibold text-white hover:bg-brand-dark" onClick={next}>ถัดไป</button>
+                : <button className="rounded-xl bg-brand px-6 py-3 font-semibold text-white hover:bg-brand-dark" onClick={submit}>ยืนยันสั่งซื้อ</button>}
+            </div>
+          </div>
+        </Shell>
+      );
+    }
+
+    function Shell({ children }) {
+      return (
+        <main className="mx-auto min-h-screen w-full max-w-xl px-4 pb-28 pt-6">
+          <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-700">
+            🧪 เวอร์ชันเดโม — ทำงานในเบราว์เซอร์ล้วน ไม่เชื่อมต่อระบบจริง
+          </div>
+          <header className="mb-5 flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand text-lg font-bold text-white">6Ty</div>
+            <div>
+              <h1 className="text-lg font-bold leading-tight">สั่งซื้อสินค้า 6Ty</h1>
+              <p className="text-sm text-gray-500">ส่งตรงถึงบ้านโดยบุรุษไปรษณีย์</p>
+            </div>
+          </header>
+          {children}
+        </main>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
