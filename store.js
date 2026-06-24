@@ -4,6 +4,7 @@
 (function () {
   var KEY = "6ty_products_v1";
   var TKEY = "6ty_types_v1";
+  var CFGKEY = "6ty_imgcfg_v1";
   var DEFAULT_TYPES = ["520", "1250"];
 
   var SEED = [
@@ -113,6 +114,10 @@
       var tmp = a.display_order; a.display_order = b.display_order; b.display_order = tmp;
       write(list); // list holds references into the raw objects' clones; persist them
     },
+
+    // Image storage config (Cloudinary). { cloud, preset }
+    imageConfig: function () { try { return JSON.parse(localStorage.getItem(CFGKEY)) || {}; } catch (e) { return {}; } },
+    setImageConfig: function (cfg) { localStorage.setItem(CFGKEY, JSON.stringify(cfg || {})); },
 
     toggle: function (id) {
       var list = readRaw();

@@ -32,7 +32,7 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="store.js?v=3"></script>
+  <script src="store.js?v=4"></script>
 
   <script type="text/plain" id="app-src">
     const { useState, useEffect } = React;
@@ -62,6 +62,17 @@
       });
     }
 
+    // Upload an image file straight to Cloudinary (unsigned preset) → returns a public URL.
+    async function uploadToCloudinary(file, cfg) {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("upload_preset", cfg.preset);
+      const res = await fetch("https://api.cloudinary.com/v1_1/" + cfg.cloud + "/image/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok || !json.secure_url) throw new Error((json.error && json.error.message) || "อัปโหลดไป Cloudinary ไม่สำเร็จ");
+      return json.secure_url;
+    }
+
     function Logo({ size=44 }) {
       return (
         <div className="grad flex items-center justify-center rounded-2xl text-white" style={{ width:size, height:size }}>
@@ -77,6 +88,14 @@
       const [flash, setFlash] = useState("");
       const [addingType, setAddingType] = useState(false);
       const types = Store.types();
+      const [cfg, setCfg] = useState(Store.imageConfig());
+      const [showCfg, setShowCfg] = useState(false);
+      const cloudReady = !!(cfg.cloud && cfg.preset);
+      function saveCfg() {
+        Store.setImageConfig({ cloud: (cfg.cloud||"").trim(), preset: (cfg.preset||"").trim() });
+        setFlash("บันทึกการตั้งค่าที่เก็บรูปแล้ว ✓");
+        setTimeout(() => setFlash(""), 2500);
+      }
 
       const refresh = () => setProducts(Store.all());
       useEffect(() => { refresh(); }, []);
@@ -88,9 +107,15 @@
       async function onImage(file) {
         if (!file) return;
         setBusy(true);
-        try { set("image", await fileToScaledDataURL(file, 640)); }
-        catch { alert("อ่านรูปไม่สำเร็จ"); }
-        finally { setBusy(false); }
+        try {
+          if (cloudReady) {
+            set("image", await uploadToCloudinary(file, cfg)); // permanent public URL
+          } else {
+            set("image", await fileToScaledDataURL(file, 640)); // local-only fallback (base64)
+          }
+        } catch (e) {
+          alert("อัปโหลดรูปไม่สำเร็จ: " + (e && e.message ? e.message : e));
+        } finally { setBusy(false); }
       }
 
       function save() {
@@ -124,6 +149,30 @@
             <a href="index.html" className="rounded-xl border-2 border-sixty-blue px-4 py-2 text-sm font-semibold text-sixty-blued">ดูหน้าร้าน →</a>
           </header>
 
+          {/* image storage settings */}
+          <section className="card mb-4">
+            <button className="flex w-full items-center justify-between" onClick={()=>setShowCfg(s=>!s)}>
+              <span className="font-bold">⚙️ ที่เก็บรูปภาพ (Cloudinary)</span>
+              <span className={"rounded-full px-2.5 py-0.5 text-xs font-semibold " + (cloudReady ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
+                {cloudReady ? "● เชื่อมแล้ว" : "○ ยังไม่ตั้งค่า"}
+              </span>
+            </button>
+            {showCfg && (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-gray-400">
+                  สมัครฟรีที่ <a href="https://cloudinary.com/users/register_free" target="_blank" rel="noopener" className="font-semibold text-sixty-blued underline">cloudinary.com</a> →
+                  Settings → Upload → Add upload preset → ตั้ง <b>Signing Mode = Unsigned</b> → คัดลอก <b>Cloud name</b> และชื่อ <b>preset</b> มากรอก
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><label className="label">Cloud name</label><input className="field" value={cfg.cloud||""} onChange={e=>setCfg({ ...cfg, cloud:e.target.value })} placeholder="เช่น dxxxxxxx" /></div>
+                  <div><label className="label">Upload preset</label><input className="field" value={cfg.preset||""} onChange={e=>setCfg({ ...cfg, preset:e.target.value })} placeholder="เช่น 6ty_unsigned" /></div>
+                </div>
+                <button className="btn-grad px-5 py-2" onClick={saveCfg}>บันทึกการตั้งค่า</button>
+                {!cloudReady && <p className="text-xs text-amber-600">ยังไม่ตั้งค่า — รูปจะถูกเก็บชั่วคราวในเบราว์เซอร์นี้เท่านั้น (ลูกค้าคนอื่นจะไม่เห็น และจำกัด ~5MB)</p>}
+              </div>
+            )}
+          </section>
+
           {/* form */}
           <section className="card mb-6">
             <h2 className="mb-4 font-bold">{form.id ? "แก้ไขสินค้า" : "เพิ่มสินค้าใหม่"}</h2>
@@ -132,9 +181,11 @@
               <div>
                 <label className="label">รูปสินค้า</label>
                 <label className="flex aspect-square w-full cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 text-center text-xs text-gray-400 hover:border-sixty-blue">
-                  {form.image
-                    ? <img src={form.image} alt="" className="h-full w-full object-cover" />
-                    : <span>แตะเพื่อ<br/>อัปโหลดรูป</span>}
+                  {busy
+                    ? <span className="text-sixty-blued">กำลังอัปโหลด…</span>
+                    : form.image
+                      ? <img src={form.image} alt="" className="h-full w-full object-cover" />
+                      : <span>แตะเพื่อ<br/>อัปโหลดรูป</span>}
                   <input type="file" accept="image/*" className="hidden" onChange={e => onImage(e.target.files[0])} />
                 </label>
                 {form.image && <button className="mt-1 text-xs text-sixty-pink" onClick={() => set("image","")}>ลบรูป</button>}
