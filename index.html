@@ -3,74 +3,99 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <title>6Ty x ไปรษณีย์ไทย — สั่งซื้อสินค้า (เดโม)</title>
-  <meta name="description" content="เดโมหน้าจองสินค้า 6Ty — ทำงานในเบราว์เซอร์ล้วน ไม่ต่อระบบจริง" />
+  <title>6ty° Sixty Degrees — สั่งซื้อน้ำแร่ (เดโม)</title>
+  <meta name="description" content="สั่งซื้อน้ำแร่ธรรมชาติ 6ty° ส่งตรงถึงบ้านโดยบุรุษไปรษณีย์" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: { extend: {
-        colors: { brand: { DEFAULT: "#e30613", dark: "#b3040f", soft: "#fff1f2" } },
+        colors: {
+          sixty: {
+            blue: "#0FB5E8",
+            blued: "#0a90c4",
+            pink: "#EC0A8C",
+            ink: "#0e2a3b",
+            mist: "#f2fbff",
+          },
+        },
         fontFamily: { sans: ["Sarabun", "system-ui", "sans-serif"] },
       } },
     };
   </script>
   <style>
     body { font-family: "Sarabun", system-ui, sans-serif; }
-    .field { width:100%; border:1px solid #d1d5db; border-radius:.75rem; padding:.75rem 1rem; outline:none; font-size:1rem; }
-    .field:focus { border-color:#e30613; box-shadow:0 0 0 3px rgba(227,6,19,.15); }
-    .label { display:block; margin-bottom:.25rem; font-size:.875rem; font-weight:500; color:#374151; }
-    .card { border:1px solid #e5e7eb; border-radius:1rem; background:#fff; padding:1rem; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+    .grad { background-image: linear-gradient(135deg, #0FB5E8 0%, #6f4fd8 55%, #EC0A8C 100%); }
+    .grad-text {
+      background-image: linear-gradient(120deg, #0FB5E8 0%, #EC0A8C 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .field { width:100%; border:1px solid #d7e3ea; border-radius:.85rem; padding:.75rem 1rem; outline:none; font-size:1rem; background:#fff; }
+    .field:focus { border-color:#0FB5E8; box-shadow:0 0 0 3px rgba(15,181,232,.18); }
+    .label { display:block; margin-bottom:.3rem; font-size:.875rem; font-weight:600; color:#33576b; }
+    .card { border:1px solid #e7eef3; border-radius:1.1rem; background:#fff; padding:1rem; box-shadow:0 6px 20px -12px rgba(13,72,103,.25); }
+    .btn-grad { background-image: linear-gradient(120deg,#0FB5E8,#EC0A8C); color:#fff; border-radius:.85rem; font-weight:700; box-shadow:0 8px 18px -8px rgba(236,10,140,.5); transition:.15s; }
+    .btn-grad:hover { filter:brightness(1.05); }
+    .btn-grad:active { transform:scale(.98); }
+    .pagebg { background:
+      radial-gradient(1200px 360px at 50% -120px, rgba(15,181,232,.16), transparent 60%),
+      radial-gradient(900px 320px at 90% 0, rgba(236,10,140,.10), transparent 55%),
+      #f7fbfd; }
   </style>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body class="pagebg text-sixty-ink">
   <div id="root"></div>
 
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <script type="text/babel" data-presets="react">
+  <!-- App source kept as text/plain so Babel does NOT auto-run it with the
+       "automatic" JSX runtime (which emits `import` and breaks classic scripts). -->
+  <script type="text/plain" id="app-src">
     const { useState, useMemo } = React;
     const baht = (n) => "฿" + Number(n || 0).toLocaleString("th-TH");
     const STEPS = ["สินค้า", "ผู้รับ", "ชำระเงิน", "ยืนยัน"];
 
     // ── demo data (no backend) ──
     const CATALOG = [
-      { sku_code:"DEMO-520",  sku_name:"สินค้าตัวอย่าง ขนาด 520",  price:290, badge:"ยอดนิยม" },
-      { sku_code:"DEMO-1250", sku_name:"สินค้าตัวอย่าง ขนาด 1250", price:590, badge:"คุ้มสุด" },
-      { sku_code:"DEMO-SET",  sku_name:"เซ็ตรวม 520 + 1250",        price:820, badge:"" },
+      { sku_code:"6TY-6",  sku_name:"6ty° แพ็ก 6 ขวด", size:"350 ml × 6",  price:90,  badge:"6 PACK" },
+      { sku_code:"6TY-12", sku_name:"6ty° แพ็ก 12 ขวด", size:"350 ml × 12", price:170, badge:"ยอดนิยม" },
+      { sku_code:"6TY-72", sku_name:"6ty° ยกลัง 72 ขวด", size:"350 ml × 72", price:960, badge:"คุ้มสุด" },
     ];
     const POSTAL = {
       "10100": { province:"กรุงเทพมหานคร", district:"ป้อมปราบศัตรูพ่าย", subdistrict:"วัดเทพศิรินทร์", branch:"ปณ. พลับพลาไชย (เดโม)" },
       "10200": { province:"กรุงเทพมหานคร", district:"พระนคร", subdistrict:"พระบรมมหาราชวัง", branch:"ปณ. ราชดำเนิน (เดโม)" },
     };
-    function lookupPostal(code) {
-      return POSTAL[code] || { province:"จังหวัดตัวอย่าง", district:"อำเภอตัวอย่าง", subdistrict:"ตำบลตัวอย่าง", branch:"ที่ทำการตัวอย่าง" };
-    }
-    function checkPromo(code) {
+    const lookupPostal = (code) => POSTAL[code] || { province:"จังหวัดตัวอย่าง", district:"อำเภอตัวอย่าง", subdistrict:"ตำบลตัวอย่าง", branch:"ที่ทำการตัวอย่าง" };
+    const checkPromo = (code) => {
       const c = (code||"").trim().toUpperCase();
-      if (c === "DEMO50") return { valid:true, code:c, message:"ใช้โค้ดได้ (เดโม) ลดเหลือราคาพิเศษ", discount_price:250 };
+      if (c === "DEMO50") return { valid:true, code:c, message:"ใช้โค้ดได้ (เดโม) ลดเหลือราคาพิเศษ", discount_price:79 };
       return { valid:false, code:c, message:"โค้ดไม่ถูกต้อง (เดโม: ลอง DEMO50)" };
-    }
+    };
 
+    function Bottle({ size=64 }) {
+      return (
+        <div className="grad flex items-center justify-center rounded-2xl text-white" style={{ width:size, height:size }}>
+          <span className="font-extrabold leading-none" style={{ fontSize: size*0.34 }}>6ty<span className="align-super" style={{ fontSize: size*0.18 }}>°</span></span>
+        </div>
+      );
+    }
     function QtyStepper({ qty, onChange }) {
       return (
         <div className="flex items-center gap-2">
-          <button className="h-9 w-9 rounded-full border border-gray-300 text-lg font-bold disabled:opacity-40"
-            onClick={() => onChange(qty-1)} disabled={qty<=0}>−</button>
-          <span className="w-6 text-center font-semibold">{qty}</span>
-          <button className="h-9 w-9 rounded-full bg-brand text-lg font-bold text-white"
-            onClick={() => onChange(qty+1)}>+</button>
+          <button className="h-9 w-9 rounded-full border-2 border-sixty-blue text-lg font-bold text-sixty-blue disabled:opacity-30" onClick={() => onChange(qty-1)} disabled={qty<=0}>−</button>
+          <span className="w-6 text-center font-bold">{qty}</span>
+          <button className="btn-grad h-9 w-9 text-lg" onClick={() => onChange(qty+1)}>+</button>
         </div>
       );
     }
     function Chip({ active, onClick, children }) {
       return (
         <button onClick={onClick}
-          className={"rounded-xl border px-4 py-3 text-sm font-medium " +
-            (active ? "border-brand bg-brand-soft text-brand" : "border-gray-300 bg-white text-gray-600")}>
+          className={"rounded-xl border-2 px-4 py-3 text-sm font-semibold transition " +
+            (active ? "border-sixty-blue bg-sixty-mist text-sixty-blued" : "border-gray-200 bg-white text-gray-500")}>
           {children}
         </button>
       );
@@ -95,12 +120,10 @@
       const [err, setErr] = useState("");
       const [done, setDone] = useState(null);
 
-      const lines = useMemo(() => Object.entries(cart).filter(([,q])=>q>0)
-        .map(([sku,qty]) => ({ item: CATALOG.find(c=>c.sku_code===sku), qty })), [cart]);
+      const lines = useMemo(() => Object.entries(cart).filter(([,q])=>q>0).map(([sku,qty]) => ({ item: CATALOG.find(c=>c.sku_code===sku), qty })), [cart]);
       const subtotal = useMemo(() => lines.reduce((s,l)=>s+l.item.price*l.qty,0), [lines]);
       const total = useMemo(() => (promo && promo.valid && typeof promo.discount_price==="number") ? promo.discount_price : subtotal, [subtotal, promo]);
       const totalQty = useMemo(() => lines.reduce((s,l)=>s+l.qty,0), [lines]);
-
       const setQty = (sku, q) => setCart(c => ({...c, [sku]: Math.max(0, Math.min(999, q))}));
 
       function onPostalBlur() {
@@ -131,12 +154,12 @@
         return (
           <Shell>
             <div className="card text-center">
-              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-3xl">✓</div>
-              <h2 className="text-xl font-bold">รับออเดอร์เรียบร้อย (เดโม)</h2>
-              <p className="mt-1 text-gray-600">เลขออเดอร์ <span className="font-mono font-semibold">{done.order_id}</span></p>
-              <p className="mt-1 text-gray-600">ยอดรวม {baht(done.amount)}</p>
-              <p className="mt-3 text-sm text-gray-500">นี่คือเดโม — ไม่ได้บันทึกข้อมูลจริง</p>
-              <button className="mt-5 rounded-xl border border-gray-300 bg-white px-5 py-3 font-semibold"
+              <div className="mx-auto mb-3 grad flex h-16 w-16 items-center justify-center rounded-full text-3xl text-white">✓</div>
+              <h2 className="text-xl font-extrabold">รับออเดอร์เรียบร้อย</h2>
+              <p className="mt-1 text-gray-500">เลขออเดอร์ <span className="font-mono font-semibold text-sixty-ink">{done.order_id}</span></p>
+              <p className="mt-1 text-gray-500">ยอดรวม <b className="grad-text">{baht(done.amount)}</b></p>
+              <p className="mt-3 text-sm text-gray-400">นี่คือเดโม — ไม่ได้บันทึกข้อมูลจริง</p>
+              <button className="mt-5 rounded-xl border-2 border-sixty-blue px-5 py-3 font-semibold text-sixty-blued"
                 onClick={()=>{setDone(null);setCart({});setStep(0);setPromo(null);setPromoCode("");setSlipName("");}}>สั่งใหม่</button>
             </div>
           </Shell>
@@ -145,12 +168,11 @@
 
       return (
         <Shell>
-          {/* stepper */}
-          <ol className="mb-5 flex items-center gap-1">
+          <ol className="mb-6 flex items-center gap-1">
             {STEPS.map((label,i) => (
-              <li key={label} className="flex flex-1 flex-col items-center gap-1">
-                <div className={"flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold " + (i<=step?"bg-brand text-white":"bg-gray-200 text-gray-500")}>{i+1}</div>
-                <span className={"text-xs " + (i===step?"font-semibold text-brand":"text-gray-400")}>{label}</span>
+              <li key={label} className="flex flex-1 flex-col items-center gap-1.5">
+                <div className={"flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold " + (i<=step?"grad text-white shadow-md":"bg-white text-gray-400 border border-gray-200")}>{i+1}</div>
+                <span className={"text-xs " + (i===step?"font-bold text-sixty-blued":"text-gray-400")}>{label}</span>
               </li>
             ))}
           </ol>
@@ -160,14 +182,15 @@
               {CATALOG.map(item => {
                 const qty = cart[item.sku_code] || 0;
                 return (
-                  <div key={item.sku_code} className="card flex items-center gap-3">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-brand-soft text-brand font-bold">6Ty</div>
+                  <div key={item.sku_code} className={"card flex items-center gap-3 transition " + (qty>0?"ring-2 ring-sixty-blue/40":"")}>
+                    <Bottle size={64} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="truncate font-semibold">{item.sku_name}</p>
-                        {item.badge && <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs text-brand">{item.badge}</span>}
+                        <p className="truncate font-bold">{item.sku_name}</p>
+                        {item.badge && <span className="grad rounded-full px-2 py-0.5 text-[11px] font-semibold text-white">{item.badge}</span>}
                       </div>
-                      <p className="text-sm text-gray-500">{baht(item.price)}</p>
+                      <p className="text-xs text-gray-400">{item.size}</p>
+                      <p className="text-sm font-semibold grad-text">{baht(item.price)}</p>
                     </div>
                     <QtyStepper qty={qty} onChange={q=>setQty(item.sku_code,q)} />
                   </div>
@@ -189,7 +212,7 @@
                   <div>
                     <label className="label">รหัสไปรษณีย์ *</label>
                     <input className="field" inputMode="numeric" maxLength={5} value={postal} onChange={e=>setPostal(e.target.value.replace(/\D/g,""))} onBlur={onPostalBlur} />
-                    {postalMsg && <p className="mt-1 text-xs text-gray-500">{postalMsg}</p>}
+                    {postalMsg && <p className="mt-1 text-xs text-sixty-blued">{postalMsg}</p>}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div><label className="label">แขวง/ตำบล</label><input className="field" value={sub} onChange={e=>setSub(e.target.value)} /></div>
@@ -209,18 +232,18 @@
                 <label className="label">โค้ดส่วนลด</label>
                 <div className="flex gap-2">
                   <input className="field" value={promoCode} onChange={e=>setPromoCode(e.target.value.toUpperCase())} placeholder="ลอง DEMO50" />
-                  <button className="shrink-0 rounded-xl border border-gray-300 bg-white px-5 font-semibold" onClick={()=>setPromo(checkPromo(promoCode))}>ใช้โค้ด</button>
+                  <button className="shrink-0 rounded-xl border-2 border-sixty-blue px-5 font-semibold text-sixty-blued" onClick={()=>setPromo(checkPromo(promoCode))}>ใช้โค้ด</button>
                 </div>
-                {promo && <p className={"mt-2 text-sm " + (promo.valid?"text-green-600":"text-red-600")}>{promo.valid?"✓ ":"✕ "}{promo.message}</p>}
+                {promo && <p className={"mt-2 text-sm font-medium " + (promo.valid?"text-emerald-600":"text-sixty-pink")}>{promo.valid?"✓ ":"✕ "}{promo.message}</p>}
               </div>
               <div className="card">
                 <label className="label">แนบสลิปการโอนเงิน *</label>
-                <input type="file" accept="image/*" className="block w-full text-sm" onChange={e=>setSlipName(e.target.files[0]?.name||"")} />
+                <input type="file" accept="image/*" className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-sixty-mist file:px-3 file:py-2 file:font-semibold file:text-sixty-blued" onChange={e=>setSlipName(e.target.files[0]?.name||"")} />
                 {slipName && <p className="mt-2 text-xs text-gray-500">ไฟล์: {slipName}</p>}
-                <p className="mt-2 text-xs text-gray-500">ยอดที่ต้องโอน: <b>{baht(total)}</b></p>
+                <p className="mt-2 text-xs text-gray-500">ยอดที่ต้องโอน: <b className="grad-text">{baht(total)}</b></p>
               </div>
               <div className="card">
-                <label className="flex items-center gap-2"><input type="checkbox" checked={invoice} onChange={e=>setInvoice(e.target.checked)} /><span className="font-medium">ต้องการใบกำกับภาษี</span></label>
+                <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-sixty-pink" checked={invoice} onChange={e=>setInvoice(e.target.checked)} /><span className="font-semibold">ต้องการใบกำกับภาษี</span></label>
                 {invoice && <input className="field mt-3" placeholder="ชื่อ/บริษัท" value={invoiceName} onChange={e=>setInvoiceName(e.target.value)} />}
               </div>
             </div>
@@ -229,35 +252,35 @@
           {step===3 && (
             <div className="space-y-3">
               <div className="card">
-                <h3 className="mb-2 font-semibold">รายการสินค้า</h3>
+                <h3 className="mb-2 font-bold">รายการสินค้า</h3>
                 {lines.map(l => (
-                  <div key={l.item.sku_code} className="flex justify-between py-1 text-sm"><span>{l.item.sku_name} × {l.qty}</span><span>{baht(l.item.price*l.qty)}</span></div>
+                  <div key={l.item.sku_code} className="flex justify-between py-1 text-sm"><span>{l.item.sku_name} × {l.qty}</span><span className="font-medium">{baht(l.item.price*l.qty)}</span></div>
                 ))}
-                <div className="mt-2 border-t pt-2">
+                <div className="mt-2 border-t border-dashed pt-2">
                   {promo && promo.valid && typeof promo.discount_price==="number" && (
-                    <div className="flex justify-between text-sm text-gray-500"><span>ราคาปกติ</span><span className="line-through">{baht(subtotal)}</span></div>
+                    <div className="flex justify-between text-sm text-gray-400"><span>ราคาปกติ</span><span className="line-through">{baht(subtotal)}</span></div>
                   )}
-                  <div className="flex justify-between font-bold"><span>ยอดชำระ</span><span className="text-brand">{baht(total)}</span></div>
+                  <div className="flex justify-between text-lg font-extrabold"><span>ยอดชำระ</span><span className="grad-text">{baht(total)}</span></div>
                 </div>
               </div>
               <div className="card text-sm">
-                <h3 className="mb-2 font-semibold">ผู้รับ</h3>
+                <h3 className="mb-2 font-bold">ผู้รับ</h3>
                 <p>{customer} · {phone}</p>
-                {pickup==="delivery" ? <p className="text-gray-600">{address} {sub} {dist} {prov} {postal}</p> : <p className="text-gray-600">รับเองที่ที่ทำการไปรษณีย์</p>}
-                {invoice && <p className="mt-1 text-gray-600">ออกใบกำกับ: {invoiceName}</p>}
+                {pickup==="delivery" ? <p className="text-gray-500">{address} {sub} {dist} {prov} {postal}</p> : <p className="text-gray-500">รับเองที่ที่ทำการไปรษณีย์</p>}
+                {invoice && <p className="mt-1 text-gray-500">ออกใบกำกับ: {invoiceName}</p>}
               </div>
             </div>
           )}
 
-          {err && <p className="mt-4 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-600">{err}</p>}
+          {err && <p className="mt-4 rounded-xl bg-pink-50 px-4 py-2 text-sm font-medium text-sixty-pink">{err}</p>}
 
-          <div className="fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white/95 backdrop-blur">
+          <div className="fixed inset-x-0 bottom-0 border-t border-gray-100 bg-white/90 backdrop-blur">
             <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-3">
-              {step>0 && <button className="rounded-xl border border-gray-300 bg-white px-5 py-3 font-semibold" onClick={back}>ย้อนกลับ</button>}
-              <div className="flex-1 text-sm">{totalQty>0 && <span className="text-gray-500">{totalQty} ชิ้น · <b className="text-gray-900">{baht(total)}</b></span>}</div>
+              {step>0 && <button className="rounded-xl border-2 border-gray-200 px-5 py-3 font-semibold text-gray-600" onClick={back}>ย้อนกลับ</button>}
+              <div className="flex-1 text-sm">{totalQty>0 && <span className="text-gray-400">{totalQty} ชิ้น · <b className="text-sixty-ink">{baht(total)}</b></span>}</div>
               {step<3
-                ? <button className="rounded-xl bg-brand px-6 py-3 font-semibold text-white hover:bg-brand-dark" onClick={next}>ถัดไป</button>
-                : <button className="rounded-xl bg-brand px-6 py-3 font-semibold text-white hover:bg-brand-dark" onClick={submit}>ยืนยันสั่งซื้อ</button>}
+                ? <button className="btn-grad px-7 py-3" onClick={next}>ถัดไป</button>
+                : <button className="btn-grad px-7 py-3" onClick={submit}>ยืนยันสั่งซื้อ</button>}
             </div>
           </div>
         </Shell>
@@ -266,15 +289,15 @@
 
     function Shell({ children }) {
       return (
-        <main className="mx-auto min-h-screen w-full max-w-xl px-4 pb-28 pt-6">
-          <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-700">
+        <main className="mx-auto min-h-screen w-full max-w-xl px-4 pb-28 pt-5">
+          <div className="mb-4 rounded-full bg-white/70 px-3 py-1.5 text-center text-xs text-sixty-blued shadow-sm ring-1 ring-sixty-blue/15">
             🧪 เวอร์ชันเดโม — ทำงานในเบราว์เซอร์ล้วน ไม่เชื่อมต่อระบบจริง
           </div>
-          <header className="mb-5 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand text-lg font-bold text-white">6Ty</div>
+          <header className="mb-6 flex items-center gap-3">
+            <Bottle size={48} />
             <div>
-              <h1 className="text-lg font-bold leading-tight">สั่งซื้อสินค้า 6Ty</h1>
-              <p className="text-sm text-gray-500">ส่งตรงถึงบ้านโดยบุรุษไปรษณีย์</p>
+              <h1 className="text-2xl font-extrabold leading-none"><span className="grad-text">6ty</span><span className="text-sixty-pink">°</span></h1>
+              <p className="text-[11px] font-semibold tracking-[.2em] text-gray-400">SIXTY DEGREES · NATURAL MINERAL WATER</p>
             </div>
           </header>
           {children}
@@ -283,6 +306,22 @@
     }
 
     ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+
+  <script>
+    // Compile JSX with CLASSIC runtime (uses React.createElement, no `import`), then run.
+    (function () {
+      try {
+        var src = document.getElementById("app-src").textContent;
+        var out = Babel.transform(src, { presets: [["react", { runtime: "classic" }]] }).code;
+        new Function(out)();
+      } catch (e) {
+        document.getElementById("root").innerHTML =
+          '<pre style="padding:16px;color:#EC0A8C;white-space:pre-wrap">โหลดเดโมไม่สำเร็จ: ' +
+          (e && e.message ? e.message : e) + '</pre>';
+        console.error(e);
+      }
+    })();
   </script>
 </body>
 </html>
