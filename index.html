@@ -105,6 +105,30 @@
         </button>
       );
     }
+    function ProductCard({ item, qty, onAdd, onChange, onImage }) {
+      return (
+        <div className={"group flex flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-lg " + (qty>0 ? "border-sixty-blue ring-1 ring-sixty-blue/30" : "border-gray-100")}>
+          <div className="relative aspect-square w-full overflow-hidden bg-sixty-mist">
+            {item.image
+              ? <img src={item.image} alt={item.name} onClick={onImage} className="h-full w-full cursor-zoom-in object-cover transition duration-300 group-hover:scale-105" />
+              : <div className="grad flex h-full w-full items-center justify-center text-3xl font-extrabold text-white">6ty°</div>}
+            {item.label && <span className="grad absolute left-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white shadow">{item.label}</span>}
+          </div>
+          <div className="flex flex-1 flex-col p-3">
+            <p className="line-clamp-2 text-sm font-bold leading-snug">{item.name}</p>
+            {item.description && <p className="mt-0.5 line-clamp-1 text-xs text-gray-400">{item.description}</p>}
+            <div className="mt-auto pt-3">
+              <p className="text-base font-extrabold grad-text">{baht(item.price)}</p>
+              <div className="mt-2">
+                {qty>0
+                  ? <div className="flex items-center justify-center rounded-xl bg-sixty-mist py-1"><QtyStepper qty={qty} onChange={onChange} /></div>
+                  : <button onClick={onAdd} className="btn-grad w-full py-2 text-sm">เพิ่มลงตะกร้า</button>}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     function App() {
       const [step, setStep] = useState(0);
@@ -189,42 +213,46 @@
 
       return (
         <Shell>
-          <ol className="mb-6 flex items-center gap-1">
-            {STEPS.map((label,i) => (
-              <li key={label} className="flex flex-1 flex-col items-center gap-1.5">
-                <div className={"flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold " + (i<=step?"grad text-white shadow-md":"bg-white text-gray-400 border border-gray-200")}>{i+1}</div>
-                <span className={"text-xs " + (i===step?"font-bold text-sixty-blued":"text-gray-400")}>{label}</span>
-              </li>
-            ))}
-          </ol>
+          {step>0 && (
+            <ol className="mx-auto mb-6 flex max-w-xl items-center gap-1">
+              {STEPS.map((label,i) => (
+                <li key={label} className="flex flex-1 flex-col items-center gap-1.5">
+                  <div className={"flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold " + (i<=step?"grad text-white shadow-md":"bg-white text-gray-400 border border-gray-200")}>{i+1}</div>
+                  <span className={"text-xs " + (i===step?"font-bold text-sixty-blued":"text-gray-400")}>{label}</span>
+                </li>
+              ))}
+            </ol>
+          )}
 
           {step===0 && (
-            <div className="space-y-3">
+            <div>
+              <section className="grad relative mb-6 overflow-hidden rounded-3xl px-5 py-8 text-white sm:px-10 sm:py-12">
+                <div className="relative z-10 max-w-md">
+                  <p className="text-[11px] font-semibold tracking-[.25em] opacity-80">SIXTY DEGREES · NATURAL MINERAL WATER</p>
+                  <h2 className="mt-2 text-2xl font-extrabold leading-tight sm:text-4xl">น้ำแร่ธรรมชาติ 6ty°<br/>ส่งตรงถึงบ้าน 💧</h2>
+                  <p className="mt-2 text-sm opacity-90 sm:text-base">สั่งง่าย ส่งไว โดยบุรุษไปรษณีย์ทั่วไทย</p>
+                </div>
+                <div className="pointer-events-none absolute -bottom-10 -right-4 select-none text-[140px] font-black leading-none opacity-10">6ty°</div>
+              </section>
+
+              <div className="mb-3 flex items-end justify-between">
+                <h3 className="text-lg font-extrabold sm:text-xl">เลือกสินค้า</h3>
+                <span className="text-sm text-gray-400">{catalog.length} รายการ</span>
+              </div>
+
               {catalog.length===0 && <p className="card text-center text-sm text-gray-400">ยังไม่มีสินค้าให้สั่ง — เพิ่มได้ที่หน้า <a href="admin.html" className="font-semibold text-sixty-blued underline">Admin</a></p>}
-              {catalog.map(item => {
-                const qty = cart[item.id] || 0;
-                return (
-                  <div key={item.id} className={"card flex items-center gap-3 transition " + (qty>0?"ring-2 ring-sixty-blue/40":"")}>
-                    {item.image
-                      ? <img src={item.image} alt={item.name} onClick={()=>setLightbox(item)} className="h-16 w-16 cursor-zoom-in rounded-2xl object-cover" />
-                      : <Bottle size={64} />}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <p className="font-bold leading-tight">{item.name}</p>
-                        {item.label && <span className="grad shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold text-white">{item.label}</span>}
-                      </div>
-                      {item.description && <p className="mt-0.5 text-xs leading-snug text-gray-400">{item.description}</p>}
-                      <p className="mt-0.5 text-sm font-semibold grad-text">{baht(item.price)}</p>
-                    </div>
-                    <div className="shrink-0"><QtyStepper qty={qty} onChange={q=>setQty(item.id,q)} /></div>
-                  </div>
-                );
-              })}
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+                {catalog.map(item => (
+                  <ProductCard key={item.id} item={item} qty={cart[item.id]||0}
+                    onAdd={()=>setQty(item.id, 1)} onChange={q=>setQty(item.id, q)} onImage={()=>item.image&&setLightbox(item)} />
+                ))}
+              </div>
             </div>
           )}
 
           {step===1 && (
-            <div className="space-y-4">
+            <div className="mx-auto max-w-xl space-y-4">
               <div><label className="label">ชื่อ-นามสกุลผู้รับ *</label><input className="field" value={customer} onChange={e=>setCustomer(e.target.value)} /></div>
               <div><label className="label">เบอร์โทรศัพท์ *</label><input className="field" inputMode="numeric" placeholder="0812345678" value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,""))} /></div>
               <div className="grid grid-cols-2 gap-2">
@@ -261,7 +289,7 @@
           )}
 
           {step===2 && (
-            <div className="space-y-4">
+            <div className="mx-auto max-w-xl space-y-4">
               <div className="card">
                 <label className="label">โค้ดส่วนลด</label>
                 <div className="flex gap-2">
@@ -284,7 +312,7 @@
           )}
 
           {step===3 && (
-            <div className="space-y-3">
+            <div className="mx-auto max-w-xl space-y-3">
               <div className="card">
                 <h3 className="mb-2 font-bold">รายการสินค้า</h3>
                 {lines.map(l => (
@@ -306,15 +334,21 @@
             </div>
           )}
 
-          {err && <p className="mt-4 rounded-xl bg-pink-50 px-4 py-2 text-sm font-medium text-sixty-pink">{err}</p>}
+          {err && <p className="mx-auto mt-4 max-w-xl rounded-xl bg-pink-50 px-4 py-2 text-sm font-medium text-sixty-pink">{err}</p>}
 
-          <div className="fixed inset-x-0 bottom-0 border-t border-gray-100 bg-white/90 backdrop-blur">
-            <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-3">
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white/90 backdrop-blur">
+            <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
               {step>0 && <button className="rounded-xl border-2 border-gray-200 px-5 py-3 font-semibold text-gray-600" onClick={back}>ย้อนกลับ</button>}
-              <div className="flex-1 text-sm">{totalQty>0 && <span className="text-gray-400">{totalQty} ชิ้น · <b className="text-sixty-ink">{baht(total)}</b></span>}</div>
-              {step<3
-                ? <button className="btn-grad px-7 py-3" onClick={next}>ถัดไป</button>
-                : <button className="btn-grad px-7 py-3" onClick={submit}>ยืนยันสั่งซื้อ</button>}
+              <div className="flex-1 text-sm">
+                {totalQty>0
+                  ? <span className="text-gray-500">🛒 {totalQty} ชิ้น · <b className="text-sixty-ink">{baht(total)}</b></span>
+                  : <span className="text-gray-300">ตะกร้าว่าง</span>}
+              </div>
+              {step===0
+                ? <button className="btn-grad px-7 py-3 disabled:opacity-40" onClick={next} disabled={totalQty===0}>ดำเนินการสั่งซื้อ</button>
+                : step<3
+                  ? <button className="btn-grad px-7 py-3" onClick={next}>ถัดไป</button>
+                  : <button className="btn-grad px-7 py-3" onClick={submit}>ยืนยันสั่งซื้อ</button>}
             </div>
           </div>
 
@@ -343,22 +377,22 @@
 
     function Shell({ children }) {
       return (
-        <main className="mx-auto min-h-screen w-full max-w-xl px-4 pb-28 pt-5">
-          <div className="mb-4 rounded-full bg-white/70 px-3 py-1.5 text-center text-xs text-sixty-blued shadow-sm ring-1 ring-sixty-blue/15">
-            🧪 เวอร์ชันเดโม — ทำงานในเบราว์เซอร์ล้วน ไม่เชื่อมต่อระบบจริง
-          </div>
-          <header className="mb-6 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Bottle size={48} />
-              <div>
-                <h1 className="text-2xl font-extrabold leading-none"><span className="grad-text">6ty</span><span className="text-sixty-pink">°</span></h1>
-                <p className="text-[11px] font-semibold tracking-[.2em] text-gray-400">SIXTY DEGREES · NATURAL MINERAL WATER</p>
-              </div>
+        <div className="min-h-screen pb-28">
+          <div className="bg-amber-50 py-1.5 text-center text-[11px] text-amber-700">🧪 เวอร์ชันเดโม — ทำงานในเบราว์เซอร์ล้วน ไม่เชื่อมต่อระบบจริง</div>
+          <header className="sticky top-0 z-40 border-b border-gray-100 bg-white/85 backdrop-blur">
+            <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5">
+              <a href="index.html" className="flex items-center gap-2.5">
+                <Bottle size={40} />
+                <div className="leading-none">
+                  <span className="text-xl font-extrabold"><span className="grad-text">6ty</span><span className="text-sixty-pink">°</span></span>
+                  <p className="mt-0.5 hidden text-[10px] font-semibold tracking-[.2em] text-gray-400 sm:block">SIXTY DEGREES · MINERAL WATER</p>
+                </div>
+              </a>
+              <a href="admin.html" className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-500 transition hover:border-sixty-blue hover:text-sixty-blued">Admin</a>
             </div>
-            <a href="admin.html" className="text-xs font-semibold text-gray-300 hover:text-sixty-blued">Admin</a>
           </header>
-          {children}
-        </main>
+          <main className="mx-auto w-full max-w-6xl px-4 pt-5 sm:pt-6">{children}</main>
+        </div>
       );
     }
 
