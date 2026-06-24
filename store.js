@@ -154,6 +154,16 @@
       var res = await client().from(TABLE).upsert([clean(a), clean(b)]);
       if (res.error) throw new Error(res.error.message);
       sortCache();
-    }
+    },
+
+    // ── read other tables (for admin dashboard) ──
+    ordersList: async function () { var r = await client().from("orders").select("*").order("created_at", { ascending: false }).limit(300); if (r.error) throw new Error(r.error.message); return r.data || []; },
+    customersList: async function () { var r = await client().from("customers").select("*").order("updated_at", { ascending: false }).limit(500); if (r.error) throw new Error(r.error.message); return r.data || []; },
+
+    // ── DC (distribution centers) CRUD ──
+    dcList: async function () { var r = await client().from("dc").select("*").order("dc_id", { ascending: true }); if (r.error) throw new Error(r.error.message); return r.data || []; },
+    dcUpsert: async function (d) { var r = await client().from("dc").upsert({ dc_id: d.dc_id, dc_name: d.dc_name || "", province: d.province || "", status: d.status || "active" }).select(); if (r.error) throw new Error(r.error.message); return (r.data && r.data[0]) || d; },
+    dcToggle: async function (id, cur) { var r = await client().from("dc").update({ status: cur === "active" ? "inactive" : "active" }).eq("dc_id", id); if (r.error) throw new Error(r.error.message); },
+    dcRemove: async function (id) { var r = await client().from("dc").delete().eq("dc_id", id); if (r.error) throw new Error(r.error.message); }
   };
 })();
