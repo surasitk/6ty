@@ -422,25 +422,35 @@
       const empty = () => ({ branch_id:"", branch_code:"", branch_name:"", province:"", active:true, affiliation:"", hub:"" });
       const [rows, setRows] = useState([]);
       const [form, setForm] = useState(empty());
-      const [editing, setEditing] = useState(false);
       const [flash, setFlash] = useState("");
       const [addingHub, setAddingHub] = useState(false);
       const [q, setQ] = useState("");
+      const [editId, setEditId] = useState(null);
+      const [editRow, setEditRow] = useState(null);
+      const [dcs, setDcs] = useState([]);
       const refresh = () => Store.branchesList().then(setRows).catch(e=>setFlash(e.message));
-      useEffect(() => { refresh(); }, []);
+      useEffect(() => { refresh(); Store.dcList().then(setDcs).catch(()=>{}); }, []);
       const set = (k,v) => setForm(f => ({ ...f, [k]:v }));
-      const activeHubs = [...new Set(rows.filter(b=>b.active).map(b=>b.hub).filter(Boolean))];
+      const setE = (k,v) => setEditRow(r => ({ ...r, [k]:v }));
+      const activeDcs = dcs.filter(d => d.status === "active"); // Hub = active DC
+      const hubOptions = [...new Set([...activeDcs.map(d=>d.dc_name), editRow && editRow.hub].filter(Boolean))];
       function nextId(list){ let max=0; (list||rows).forEach(b=>{ const m=/^BR-(\d+)$/.exec(b.branch_id||""); if(m){ const n=parseInt(m[1],10); if(n>max)max=n; } }); return "BR-"+String(max+1).padStart(4,"0"); }
-      const previewId = editing ? form.branch_id : nextId();
-      async function save(){
+      const previewId = nextId();
+      const cell = "w-full rounded-lg border border-gray-300 px-2 py-1 text-sm focus:border-sixty-blue focus:outline-none";
+      async function add(){
         if(!form.branch_code.trim()) return setFlash("กรุณากรอก Branch Code");
         if(!form.branch_name.trim()) return setFlash("กรุณากรอก Branch Name");
-        const id = editing ? form.branch_id : nextId();
+        const id = nextId();
         try { await Store.branchUpsert({ ...form, branch_id:id, branch_code:form.branch_code.trim(), branch_name:form.branch_name.trim() });
-          setForm(empty()); setEditing(false); setAddingHub(false); refresh(); setFlash(editing?"อัปเดตสาขาแล้ว ✓":"เพิ่มสาขาแล้ว ✓ ("+id+")"); setTimeout(()=>setFlash(""),3000); }
+          setForm(empty()); setAddingHub(false); refresh(); setFlash("เพิ่มสาขาแล้ว ✓ ("+id+")"); setTimeout(()=>setFlash(""),3000); }
         catch(e){ setFlash("บันทึกไม่สำเร็จ: " + e.message); }
       }
-      function edit(b){ setForm({ ...b }); setEditing(true); setAddingHub(false); window.scrollTo({top:0,behavior:"smooth"}); }
+      function startEdit(b){ setEditId(b.branch_id); setEditRow({ ...b }); }
+      function cancelEdit(){ setEditId(null); setEditRow(null); }
+      async function saveEdit(){
+        if(!editRow.branch_code.trim() || !editRow.branch_name.trim()) return alert("กรุณากรอก Branch Code และ Branch Name");
+        try { await Store.branchUpsert(editRow); cancelEdit(); refresh(); } catch(e){ alert(e.message); }
+      }
       async function toggle(b){ try { await Store.branchToggle(b.branch_id, b.active); refresh(); } catch(e){ alert(e.message); } }
       async function remove(id){ if(confirm("ลบสาขานี้?")){ try { await Store.branchRemove(id); refresh(); } catch(e){ alert(e.message); } } }
       const filtered = rows.filter(b => { const s=(q||"").toLowerCase(); return !s || (b.branch_name||"").toLowerCase().includes(s) || (b.branch_code||"").includes(s) || (b.province||"").toLowerCase().includes(s); });
@@ -448,7 +458,7 @@
         <div>
           <h1 className="mb-4 text-xl font-extrabold">สาขา (Branches)</h1>
           <section className="card mb-6">
-            <h2 className="mb-3 font-bold">{editing ? "แก้ไขสาขา" : "เพิ่มสาขาใหม่"}</h2>
+            <h2 className="mb-3 font-bold">เพิ่มสาขาใหม่</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <div><label className="label">Branch ID <span className="font-normal text-gray-400">(สร้างอัตโนมัติ)</span></label><input className="field bg-gray-100 text-gray-500" value={previewId} disabled readOnly /></div>
               <div><label className="label">Branch Code *</label><input className="field" value={form.branch_code} onChange={e=>set("branch_code",e.target.value)} placeholder="เช่น 10100" /></div>
@@ -466,46 +476,73 @@
                   <option value="no">Inactive (ปิด)</option>
                 </select>
               </div>
-              <div className="sm:col-span-2"><label className="label">Hub <span className="font-normal text-gray-400">(จาก hub ที่ active)</span></label>
-                {!addingHub ? (
-                  <select className="field" value={form.hub} onChange={e=>{ if(e.target.value==="__new__"){ setAddingHub(true); set("hub",""); } else set("hub",e.target.value); }}>
-                    <option value="">— เลือก Hub —</option>
-                    {activeHubs.map(h => <option key={h} value={h}>{h}</option>)}
-                    <option value="__new__">＋ เพิ่ม Hub ใหม่…</option>
+              <div className="sm:col-span-2"><label className="label">Hub <span className="font-normal text-gray-400">(เลือกจาก DC ที่ active — Hub คือ DC)</span></label>
+                {activeDcs.length ? (
+                  <select className="field" value={form.hub} onChange={e=>set("hub",e.target.value)}>
+                    <option value="">— เลือก Hub (DC) —</option>
+                    {activeDcs.map(d => <option key={d.dc_id} value={d.dc_name}>{d.dc_name} ({d.dc_id})</option>)}
                   </select>
                 ) : (
-                  <div className="flex gap-2"><input className="field" autoFocus value={form.hub} onChange={e=>set("hub",e.target.value)} placeholder="พิมพ์ Hub ใหม่" /><button className="shrink-0 rounded-xl border-2 border-gray-200 px-3 font-semibold text-gray-500" onClick={()=>setAddingHub(false)}>เสร็จ</button></div>
+                  <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">⚠️ ยังไม่มี Hub — กรุณาไปสร้าง <b>DC ที่ active</b> ในเมนู <b>DC</b> ก่อน (Hub คือ DC)</p>
                 )}
               </div>
             </div>
             {flash && <p className="mt-3 text-sm font-medium text-sixty-blued">{flash}</p>}
-            <div className="mt-4 flex gap-2">
-              <button className="btn-grad px-6 py-2.5" onClick={save}>{editing?"บันทึกการแก้ไข":"เพิ่มสาขา"}</button>
-              {editing && <button className="rounded-xl border-2 border-gray-200 px-5 py-2.5 font-semibold text-gray-500" onClick={()=>{setForm(empty());setEditing(false);setAddingHub(false);}}>ยกเลิก</button>}
+            <div className="mt-4">
+              <button className="btn-grad px-6 py-2.5" onClick={add}>เพิ่มสาขา</button>
             </div>
           </section>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-bold">สาขาทั้งหมด ({rows.length})</h2>
             <input className="field max-w-xs" placeholder="ค้นหา ชื่อ/รหัส/จังหวัด" value={q} onChange={e=>setQ(e.target.value)} />
           </div>
-          <div className="space-y-3">
-            {filtered.map(b => (
-              <div key={b.branch_id} className="card flex items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sixty-mist text-xl">🏤</div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold">{b.branch_name} <span className="font-mono text-xs font-normal text-gray-400">{b.branch_code}</span></p>
-                  <p className="text-xs text-gray-500">{b.province}{b.affiliation && " · "+b.affiliation}{b.hub && " · Hub: "+b.hub}</p>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-1.5">
-                  <StatusPill on={b.active} onText="● active" offText="○ inactive" onClick={()=>toggle(b)} />
-                  <div className="flex gap-2 text-xs">
-                    <button className="font-semibold text-sixty-blued" onClick={()=>edit(b)}>แก้ไข</button>
-                    <button className="font-semibold text-sixty-pink" onClick={()=>remove(b.branch_id)}>ลบ</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {filtered.length===0 && <p className="text-center text-sm text-gray-400">ไม่พบสาขา</p>}
+          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <table className="w-full min-w-[860px] text-sm">
+              <thead className="bg-gray-50 text-left text-xs text-gray-500">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Branch ID</th>
+                  <th className="px-3 py-2 font-semibold">Code</th>
+                  <th className="px-3 py-2 font-semibold">Branch Name</th>
+                  <th className="px-3 py-2 font-semibold">Province</th>
+                  <th className="px-3 py-2 font-semibold">สังกัด</th>
+                  <th className="px-3 py-2 font-semibold">Hub</th>
+                  <th className="px-3 py-2 font-semibold">Active</th>
+                  <th className="px-3 py-2 text-right font-semibold">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(b => editId===b.branch_id ? (
+                  <tr key={b.branch_id} className="border-t border-gray-100 bg-sixty-mist/40 align-middle">
+                    <td className="px-3 py-2 font-mono text-xs text-gray-400">{b.branch_id}</td>
+                    <td className="px-2 py-1"><input className={cell} value={editRow.branch_code} onChange={e=>setE("branch_code",e.target.value)} /></td>
+                    <td className="px-2 py-1"><input className={cell} value={editRow.branch_name} onChange={e=>setE("branch_name",e.target.value)} /></td>
+                    <td className="px-2 py-1"><select className={cell} value={editRow.province} onChange={e=>setE("province",e.target.value)}><option value="">—</option>{PROVINCES.map(p=> <option key={p} value={p}>{p}</option>)}</select></td>
+                    <td className="px-2 py-1"><input className={cell} value={editRow.affiliation} onChange={e=>setE("affiliation",e.target.value)} /></td>
+                    <td className="px-2 py-1"><select className={cell} value={editRow.hub} onChange={e=>setE("hub",e.target.value)}><option value="">—</option>{hubOptions.map(h=> <option key={h} value={h}>{h}</option>)}</select></td>
+                    <td className="px-2 py-1"><select className={cell} value={editRow.active?"yes":"no"} onChange={e=>setE("active",e.target.value==="yes")}><option value="yes">active</option><option value="no">inactive</option></select></td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      <button className="btn-grad px-3 py-1 text-xs" onClick={saveEdit}>บันทึก</button>
+                      <button className="ml-2 rounded-lg border-2 border-gray-200 px-3 py-1 text-xs font-semibold text-gray-500" onClick={cancelEdit}>ยกเลิก</button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={b.branch_id} className="border-t border-gray-100 align-middle hover:bg-gray-50">
+                    <td className="px-3 py-2 font-mono text-xs text-gray-400">{b.branch_id}</td>
+                    <td className="px-3 py-2">{b.branch_code}</td>
+                    <td className="px-3 py-2 font-medium">{b.branch_name}</td>
+                    <td className="px-3 py-2">{b.province}</td>
+                    <td className="px-3 py-2">{b.affiliation}</td>
+                    <td className="px-3 py-2">{b.hub}</td>
+                    <td className="px-3 py-2"><button onClick={()=>toggle(b)} className={"rounded-full px-2.5 py-0.5 text-xs font-semibold " + (b.active?"bg-emerald-100 text-emerald-700":"bg-gray-200 text-gray-500")}>{b.active?"● active":"○ inactive"}</button></td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      <button className="font-semibold text-sixty-blued" onClick={()=>startEdit(b)}>แก้ไข</button>
+                      <button className="ml-3 font-semibold text-sixty-pink" onClick={()=>remove(b.branch_id)}>ลบ</button>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length===0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-gray-400">ไม่พบสาขา</td></tr>}
+              </tbody>
+            </table>
           </div>
         </div>
       );
