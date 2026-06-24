@@ -14,10 +14,23 @@
 
   var LABELS = ["", "6 PACK", "ยอดนิยม", "คุ้มสุด", "ใหม่", "ลดราคา"];
 
+  // Backfill fields for products saved by older versions (e.g. no display_order).
+  function normalize(arr) {
+    var needsOrder = arr.some(function (p) { return typeof p.display_order !== "number"; });
+    if (needsOrder) arr.forEach(function (p, i) { p.display_order = i + 1; });
+    arr.forEach(function (p) {
+      if (p.product_type === undefined) p.product_type = "";
+      if (p.label === undefined) p.label = "";
+      if (p.enabled === undefined) p.enabled = true;
+    });
+    if (needsOrder) { try { localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) {} }
+    return arr;
+  }
+
   function readRaw() {
     try {
       var raw = localStorage.getItem(KEY);
-      if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) return arr; }
+      if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) return normalize(arr); }
     } catch (e) { /* ignore */ }
     write(SEED);
     return SEED.map(function (p) { return Object.assign({}, p); });
