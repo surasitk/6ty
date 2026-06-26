@@ -32,7 +32,7 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="store.js?v=10"></script>
+  <script src="store.js?v=11"></script>
 
   <script type="text/plain" id="app-src">
     const { useState, useEffect } = React;
@@ -242,6 +242,12 @@
       useEffect(() => { refresh(); Store.cronGet().then(setCron).catch(()=>setCron({})); }, []);
       const setC = (k,v) => setCron(c => ({ ...c, [k]:v }));
       async function saveCron(){ try { await Store.cronSave(cron); setCronFlash("บันทึกการตั้งค่า cronjob แล้ว ✓"); setTimeout(()=>setCronFlash(""),3000); } catch(e){ alert(e.message); } }
+      const [pay, setPay] = useState(null);
+      const [showPay, setShowPay] = useState(false);
+      const [payFlash, setPayFlash] = useState("");
+      useEffect(() => { Store.settingsGet().then(setPay).catch(()=>setPay({})); }, []);
+      const setP = (k,v) => setPay(s => ({ ...s, [k]:v }));
+      async function savePay(){ try { await Store.settingsSave(pay); setPayFlash("บันทึกการตั้งค่าชำระเงินแล้ว ✓"); setTimeout(()=>setPayFlash(""),3000); } catch(e){ alert(e.message); } }
       const itemsText = (items) => Array.isArray(items) ? items.map(i => (i.name||i.sku_code||"สินค้า") + " ×" + (i.qty||1)).join(", ") : "";
       const PAY = ["Pending","Paid","Cancelled"];
       async function changePay(o, val){
@@ -696,6 +702,27 @@
                 {cronFlash && <p className="mt-2 text-sm font-medium text-sixty-blued">{cronFlash}</p>}
                 <div className="mt-3"><button className="btn-grad px-6 py-2.5" onClick={saveCron}>บันทึกการตั้งค่า</button></div>
                 <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">⚙️ ค่านี้เก็บใน Supabase — ตัวที่ "รันจริง" คือ Google Apps Script <b>CronReport.gs</b> (แนบให้แล้ว) ติดตั้งในโปรเจกต์ Apps Script + ตั้ง time-driven trigger ให้รันตามเวลา แล้วมันจะอ่าน config นี้ → สร้างไฟล์ → อีเมลให้อัตโนมัติ</p>
+              </div>
+            )}
+          </section>
+
+          <section className="card mb-4">
+            <button className="flex w-full items-center justify-between" onClick={()=>setShowPay(s=>!s)}>
+              <span className="font-bold">💳 ตั้งค่าการชำระเงิน (QR / บัญชี)</span>
+              <span className={"rounded-full px-2.5 py-0.5 text-xs font-semibold " + (pay&&pay.payment_qr_url?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700")}>{pay&&pay.payment_qr_url?"● ตั้ง QR แล้ว":"○ ยังไม่ตั้ง QR"}</span>
+            </button>
+            {showPay && pay && (
+              <div className="mt-4 space-y-3">
+                <div><label className="label">ลิงก์รูป QR (KBank static)</label><input className="field" value={pay.payment_qr_url||""} onChange={e=>setP("payment_qr_url",e.target.value)} placeholder="วางลิงก์รูป QR (อัปรูปที่ไหนก็ได้ เช่น Cloudinary แล้วก๊อป URL)" /></div>
+                {pay.payment_qr_url && <img src={pay.payment_qr_url} alt="QR" className="h-40 w-40 rounded-xl border object-contain" />}
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div><label className="label">ธนาคาร</label><input className="field" value={pay.bank_name||""} onChange={e=>setP("bank_name",e.target.value)} placeholder="ธนาคารกสิกรไทย" /></div>
+                  <div><label className="label">เลขบัญชี</label><input className="field" value={pay.bank_account||""} onChange={e=>setP("bank_account",e.target.value)} placeholder="xxx-x-xxxxx-x" /></div>
+                  <div><label className="label">ชื่อบัญชี</label><input className="field" value={pay.bank_holder||""} onChange={e=>setP("bank_holder",e.target.value)} placeholder="บจก. ..." /></div>
+                </div>
+                {payFlash && <p className="text-sm font-medium text-sixty-blued">{payFlash}</p>}
+                <button className="btn-grad px-6 py-2.5" onClick={savePay}>บันทึก</button>
+                <p className="text-xs text-gray-400">ค่านี้จะแสดงในหน้าชำระเงินของลูกค้า (QR + เลขบัญชี)</p>
               </div>
             )}
           </section>

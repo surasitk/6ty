@@ -199,6 +199,32 @@
 
     // ── Cronjob config (single row, id=1) ──
     cronGet: async function () { var r = await client().from("cron_config").select("*").eq("id", 1); if (r.error) throw new Error(r.error.message); return (r.data && r.data[0]) || { id: 1, file_type: "csv", status_filter: "Paid", sweep_time: "09:00", send_time: "09:00", channel_email: true, channel_line: false, email_to: "surasit@transformational.com", enabled: true }; },
-    cronSave: async function (cfg) { var r = await client().from("cron_config").upsert(Object.assign({ id: 1 }, cfg, { updated_at: new Date().toISOString() })); if (r.error) throw new Error(r.error.message); }
+    cronSave: async function (cfg) { var r = await client().from("cron_config").upsert(Object.assign({ id: 1 }, cfg, { updated_at: new Date().toISOString() })); if (r.error) throw new Error(r.error.message); },
+
+    // ── Store settings (payment QR / bank) ──
+    settingsGet: async function () { var r = await client().from("settings").select("*").eq("id", 1); if (r.error) throw new Error(r.error.message); return (r.data && r.data[0]) || { id: 1 }; },
+    settingsSave: async function (s) { var r = await client().from("settings").upsert(Object.assign({ id: 1 }, s, { updated_at: new Date().toISOString() })); if (r.error) throw new Error(r.error.message); },
+
+    // ── Customer-facing: create order + upload slip ──
+    createOrder: async function (payload) {
+      var now = new Date();
+      var pad = function (n) { return String(n).padStart(2, "0"); };
+      var oid = "ORD-" + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "-" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds()) + "-" + Math.floor(Math.random() * 9 + 1);
+      var row = Object.assign({ order_id: oid, payment_status: "Pending", status: "NEW", shipping_status: "NEW" }, payload);
+      var r = await client().from("orders").insert(row).select();
+      if (r.error) throw new Error(r.error.message);
+      return (r.data && r.data[0]) || row;
+    },
+    uploadSlip: async function (orderId, file) {
+      var ext = (file.name || "slip.jpg").split(".").pop();
+      var path = "slips/" + orderId + "-" + Date.now() + "." + ext;
+      var up = await client().storage.from("slips").upload(orderId + "-" + Date.now() + "." + ext, file, { upsert: true, contentType: file.type });
+      if (up.error) throw new Error(up.error.message);
+      var pub = client().storage.from("slips").getPublicUrl(up.data.path);
+      var url = pub.data.publicUrl;
+      var r = await client().from("orders").update({ slip_url: url, payment_status: "Pending" }).eq("order_id", orderId);
+      if (r.error) throw new Error(r.error.message);
+      return url;
+    }
   };
 })();

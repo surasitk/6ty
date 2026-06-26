@@ -51,14 +51,14 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="store.js?v=6"></script>
+  <script src="store.js?v=11"></script>
 
   <!-- App source kept as text/plain so Babel does NOT auto-run it with the
        "automatic" JSX runtime (which emits `import` and breaks classic scripts). -->
   <script type="text/plain" id="app-src">
     const { useState, useMemo, useEffect } = React;
     const baht = (n) => "฿" + Number(n || 0).toLocaleString("th-TH");
-    const STEPS = ["สินค้า", "ผู้รับ", "ชำระเงิน", "ยืนยัน"];
+    const STEPS = ["เลือกสินค้า", "ชำระเงิน & ยืนยัน"];
 
     // Products come from the shared Store (managed in admin.html), demo only.
     // Real Thailand address data (~7,400 tambons), lazy-loaded & cached from CDN.
@@ -131,6 +131,42 @@
       );
     }
 
+    function PaymentBox({ settings, amount }) {
+      const s = settings || {};
+      return (
+        <div className="card">
+          <h3 className="mb-2 font-bold">ชำระเงิน</h3>
+          <p className="text-sm text-gray-500">สแกน QR แล้วโอนยอด <b className="grad-text">{baht(amount)}</b></p>
+          <div className="mt-3 flex flex-col items-center gap-2">
+            {s.payment_qr_url
+              ? <img src={s.payment_qr_url} alt="QR" className="h-56 w-56 rounded-xl border object-contain" />
+              : <div className="flex h-56 w-56 items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 px-3 text-center text-xs text-gray-400">ยังไม่ได้ตั้ง QR<br/>(ตั้งที่ Admin → ออเดอร์ → ตั้งค่าชำระเงิน)</div>}
+            <p className="text-sm font-semibold">{s.bank_name || "ธนาคารกสิกรไทย (KBank)"}</p>
+            {s.bank_account && <p className="text-sm text-gray-600">เลขบัญชี <b className="text-sixty-ink">{s.bank_account}</b>{s.bank_holder ? " · "+s.bank_holder : ""}</p>}
+          </div>
+        </div>
+      );
+    }
+
+    function SlipUploadBox({ order, onUploaded }) {
+      const [busy, setBusy] = useState(false);
+      const [url, setUrl] = useState(order.slip_url || "");
+      async function up(file){ if(!file) return; setBusy(true); try { const u = await Store.uploadSlip(order.order_id, file); setUrl(u); onUploaded && onUploaded(u); } catch(e){ alert("อัปสลิปไม่สำเร็จ: " + (e&&e.message?e.message:e)); } finally { setBusy(false); } }
+      return (
+        <div className="card mt-4">
+          {url ? (
+            <p className="text-center text-sm font-semibold text-emerald-600">✓ แนบสลิปแล้ว — รอแอดมินยืนยันการชำระเงิน</p>
+          ) : (
+            <div className="text-center">
+              <p className="font-bold">📎 อัปโหลดสลิปการโอนเงิน</p>
+              <p className="mt-1 text-xs text-gray-400">อัปตอนนี้เลย หรือกลับมาอัปทีหลังก็ได้ — ออเดอร์ถูกบันทึกแล้ว ไม่หาย</p>
+              <label className="btn-grad mt-3 inline-block cursor-pointer px-6 py-2.5">{busy?"กำลังอัป…":"เลือกไฟล์สลิป"}<input type="file" accept="image/*" className="hidden" disabled={busy} onChange={e=>up(e.target.files[0])} /></label>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     function App() {
       const [step, setStep] = useState(0);
       const [catalog, setCatalog] = useState([]);
@@ -153,6 +189,10 @@
       const [slipName, setSlipName] = useState("");
       const [err, setErr] = useState("");
       const [done, setDone] = useState(null);
+      const [settings, setSettings] = useState({});
+      const [submitting, setSubmitting] = useState(false);
+      const [slipFile, setSlipFile] = useState(null);
+      useEffect(() => { Store.settingsGet().then(setSettings).catch(()=>{}); }, []);
 
       const lines = useMemo(() => Object.entries(cart).filter(([,q])=>q>0).map(([sku,qty]) => ({ item: catalog.find(c=>c.id===sku), qty })).filter(l=>l.item), [cart, catalog]);
       const subtotal = useMemo(() => lines.reduce((s,l)=>s+l.item.price*l.qty,0), [lines]);
@@ -185,29 +225,46 @@
           if (!customer.trim()) return "กรุณากรอกชื่อผู้รับ";
           if (!/^0\d{8,9}$/.test(phone)) return "เบอร์โทรไม่ถูกต้อง";
           if (pickup==="delivery") { if(!/^\d{5}$/.test(postal)) return "กรุณากรอกรหัสไปรษณีย์"; if(!address.trim()) return "กรุณากรอกที่อยู่"; }
-          return "";
+          if (invoice && !invoiceName.trim()) return "กรุณากรอกชื่อสำหรับใบกำกับภาษี";
         }
-        if (step===2) { if(!slipName) return "กรุณาแนบสลิป"; if(invoice && !invoiceName.trim()) return "กรุณากรอกชื่อใบกำกับ"; return ""; }
         return "";
       }
-      function next() { const e=validate(); if(e){setErr(e);return;} setErr(""); setStep(s=>Math.min(3,s+1)); }
-      function back() { setErr(""); setStep(s=>Math.max(0,s-1)); }
-      function submit() {
-        const id = "DEMO-" + new Date().toISOString().slice(0,19).replace(/[-:T]/g,"");
-        setDone({ order_id:id, amount:total });
+      function next() { const e=validate(); if(e){setErr(e);return;} setErr(""); setStep(1); window.scrollTo({top:0}); }
+      function back() { setErr(""); setStep(0); }
+      async function submit() {
+        const e = validate(); if(e){ setErr(e); return; }
+        setErr(""); setSubmitting(true);
+        try {
+          const payload = {
+            customer: customer.trim(), phone: phone.trim(),
+            items: lines.map(l=>({ sku_code:l.item.id, name:l.item.name, qty:l.qty, price:l.item.price })),
+            amount: total, pickup_option: pickup,
+            address: address.trim(), subdistrict: sub, district: dist, province: prov, postal_code: pickup==="delivery"?postal:"",
+            additional_note: note.trim(), promo_code: (promo&&promo.valid)?promo.code:"",
+            invoice_required: invoice, invoice_name: invoiceName.trim()
+          };
+          const order = await Store.createOrder(payload);
+          if (slipFile) { try { const url = await Store.uploadSlip(order.order_id, slipFile); order.slip_url = url; } catch(se){ /* slip optional — ไม่ block */ } }
+          setDone(order); window.scrollTo({top:0});
+        } catch(er){ setErr("บันทึกออเดอร์ไม่สำเร็จ: " + (er&&er.message?er.message:er)); }
+        finally { setSubmitting(false); }
       }
 
       if (done) {
         return (
           <Shell>
-            <div className="card text-center">
-              <div className="mx-auto mb-3 grad flex h-16 w-16 items-center justify-center rounded-full text-3xl text-white">✓</div>
-              <h2 className="text-xl font-extrabold">รับออเดอร์เรียบร้อย</h2>
-              <p className="mt-1 text-gray-500">เลขออเดอร์ <span className="font-mono font-semibold text-sixty-ink">{done.order_id}</span></p>
-              <p className="mt-1 text-gray-500">ยอดรวม <b className="grad-text">{baht(done.amount)}</b></p>
-              <p className="mt-3 text-sm text-gray-400">นี่คือเดโม — ไม่ได้บันทึกข้อมูลจริง</p>
-              <button className="mt-5 rounded-xl border-2 border-sixty-blue px-5 py-3 font-semibold text-sixty-blued"
-                onClick={()=>{setDone(null);setCart({});setStep(0);setPromo(null);setPromoCode("");setSlipName("");}}>สั่งใหม่</button>
+            <div className="mx-auto max-w-md">
+              <div className="card text-center">
+                <div className="mx-auto mb-3 grad flex h-16 w-16 items-center justify-center rounded-full text-3xl text-white">✓</div>
+                <h2 className="text-xl font-extrabold">รับคำสั่งซื้อแล้ว 🎉</h2>
+                <p className="mt-1 text-gray-500">เลขออเดอร์ <span className="font-mono font-semibold text-sixty-ink">{done.order_id}</span></p>
+                <p className="mt-1 text-lg font-extrabold grad-text">{baht(done.amount)}</p>
+                <p className="mt-2 text-xs text-gray-400">ออเดอร์ถูกบันทึกแล้ว — โอนเงินตาม QR แล้วแนบสลิป (ตอนนี้หรือทีหลังก็ได้)</p>
+              </div>
+              <div className="mt-4"><PaymentBox settings={settings} amount={done.amount} /></div>
+              <SlipUploadBox order={done} onUploaded={(url)=>setDone({...done, slip_url:url})} />
+              <button className="mt-4 w-full rounded-xl border-2 border-sixty-blue px-5 py-3 font-semibold text-sixty-blued"
+                onClick={()=>{setDone(null);setCart({});setStep(0);setPromo(null);setPromoCode("");setSlipFile(null);setCustomer("");setPhone("");setAddress("");setPostal("");setSub("");setDist("");setProv("");setNote("");setInvoice(false);setInvoiceName("");}}>สั่งซื้อรายการใหม่</button>
             </div>
           </Shell>
         );
@@ -290,7 +347,7 @@
             </div>
           )}
 
-          {step===2 && (
+          {step===1 && (
             <div className="mx-auto max-w-xl space-y-4">
               <div className="card">
                 <label className="label">โค้ดส่วนลด</label>
@@ -300,11 +357,12 @@
                 </div>
                 {promo && <p className={"mt-2 text-sm font-medium " + (promo.valid?"text-emerald-600":"text-sixty-pink")}>{promo.valid?"✓ ":"✕ "}{promo.message}</p>}
               </div>
+              <PaymentBox settings={settings} amount={total} />
               <div className="card">
-                <label className="label">แนบสลิปการโอนเงิน *</label>
-                <input type="file" accept="image/*" className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-sixty-mist file:px-3 file:py-2 file:font-semibold file:text-sixty-blued" onChange={e=>setSlipName(e.target.files[0]?.name||"")} />
-                {slipName && <p className="mt-2 text-xs text-gray-500">ไฟล์: {slipName}</p>}
-                <p className="mt-2 text-xs text-gray-500">ยอดที่ต้องโอน: <b className="grad-text">{baht(total)}</b></p>
+                <label className="label">แนบสลิป <span className="font-normal text-gray-400">(ไม่บังคับ — อัปทีหลังได้)</span></label>
+                <input type="file" accept="image/*" className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-sixty-mist file:px-3 file:py-2 file:font-semibold file:text-sixty-blued" onChange={e=>{ setSlipFile(e.target.files[0]||null); setSlipName(e.target.files[0]?.name||""); }} />
+                {slipName && <p className="mt-2 text-xs text-emerald-600">✓ {slipName}</p>}
+                <p className="mt-2 text-xs text-gray-400">ยังไม่พร้อม? กดยืนยันได้เลย ออเดอร์จะถูกบันทึก แล้วอัปสลิปทีหลังในหน้าถัดไปได้</p>
               </div>
               <div className="card">
                 <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-sixty-pink" checked={invoice} onChange={e=>setInvoice(e.target.checked)} /><span className="font-semibold">ต้องการใบกำกับภาษี</span></label>
@@ -313,7 +371,7 @@
             </div>
           )}
 
-          {step===3 && (
+          {step===1 && (
             <div className="mx-auto max-w-xl space-y-3">
               <div className="card">
                 <h3 className="mb-2 font-bold">รายการสินค้า</h3>
@@ -348,9 +406,7 @@
               </div>
               {step===0
                 ? <button className="btn-grad px-7 py-3 disabled:opacity-40" onClick={next} disabled={totalQty===0}>ดำเนินการสั่งซื้อ</button>
-                : step<3
-                  ? <button className="btn-grad px-7 py-3" onClick={next}>ถัดไป</button>
-                  : <button className="btn-grad px-7 py-3" onClick={submit}>ยืนยันสั่งซื้อ</button>}
+                : <button className="btn-grad px-7 py-3 disabled:opacity-50" onClick={submit} disabled={submitting}>{submitting?"กำลังบันทึก…":"ยืนยันคำสั่งซื้อ"}</button>}
             </div>
           </div>
 
