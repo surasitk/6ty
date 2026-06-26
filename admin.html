@@ -32,7 +32,7 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="store.js?v=11"></script>
+  <script src="store.js?v=12"></script>
 
   <script type="text/plain" id="app-src">
     const { useState, useEffect } = React;
@@ -249,7 +249,7 @@
       const setP = (k,v) => setPay(s => ({ ...s, [k]:v }));
       async function savePay(){ try { await Store.settingsSave(pay); setPayFlash("บันทึกการตั้งค่าชำระเงินแล้ว ✓"); setTimeout(()=>setPayFlash(""),3000); } catch(e){ alert(e.message); } }
       const itemsText = (items) => Array.isArray(items) ? items.map(i => (i.name||i.sku_code||"สินค้า") + " ×" + (i.qty||1)).join(", ") : "";
-      const PAY = ["Pending","Paid","Cancelled"];
+      const PAY = ["Pending","Verifying","Paid","Cancelled"];
       async function changePay(o, val){
         try { await Store.orderUpdate(o.order_id, { payment_status: val }); refresh();
           setFlash(val==="Paid" ? ("✓ "+o.order_id+" → Paid (ระบบจริงจะยิง LINE flex + อีเมลยืนยันการชำระให้ลูกค้า)") : ("อัปเดต "+o.order_id+" → "+val));
@@ -299,7 +299,7 @@
                       <td className="whitespace-nowrap px-3 py-2 text-right font-bold grad-text">{baht(o.amount)}</td>
                       <td className="px-2 py-1">
                         <select value={o.payment_status||"Pending"} onChange={e=>changePay(o,e.target.value)}
-                          className={"rounded-lg border px-2 py-1 text-xs font-semibold " + (o.payment_status==="Paid"?"border-emerald-300 bg-emerald-50 text-emerald-700":o.payment_status==="Cancelled"?"border-red-300 bg-red-50 text-red-600":"border-amber-300 bg-amber-50 text-amber-700")}>
+                          className={"rounded-lg border px-2 py-1 text-xs font-semibold " + (o.payment_status==="Paid"?"border-emerald-300 bg-emerald-50 text-emerald-700":o.payment_status==="Cancelled"?"border-red-300 bg-red-50 text-red-600":o.payment_status==="Verifying"?"border-sky-300 bg-sky-50 text-sky-700":"border-amber-300 bg-amber-50 text-amber-700")}>
                           {[...new Set([o.payment_status||"Pending", ...PAY])].map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                       </td>

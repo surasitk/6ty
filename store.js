@@ -222,7 +222,7 @@
       if (up.error) throw new Error(up.error.message);
       var pub = client().storage.from("slips").getPublicUrl(up.data.path);
       var url = pub.data.publicUrl;
-      var r = await client().from("orders").update({ slip_url: url, payment_status: "Pending" }).eq("order_id", orderId);
+      var r = await client().from("orders").update({ slip_url: url, payment_status: "Verifying" }).eq("order_id", orderId);
       if (r.error) throw new Error(r.error.message);
       return url;
     }
