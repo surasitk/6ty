@@ -51,7 +51,7 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="store.js?v=12"></script>
+  <script src="store.js?v=13"></script>
 
   <!-- App source kept as text/plain so Babel does NOT auto-run it with the
        "automatic" JSX runtime (which emits `import` and breaks classic scripts). -->
@@ -189,6 +189,7 @@
       const [slipName, setSlipName] = useState("");
       const [err, setErr] = useState("");
       const [done, setDone] = useState(null);
+      const [flash, setFlash] = useState("");
       const [settings, setSettings] = useState({});
       const [submitting, setSubmitting] = useState(false);
       const [slipFile, setSlipFile] = useState(null);
@@ -231,6 +232,8 @@
       }
       function next() { const e=validate(); if(e){setErr(e);return;} setErr(""); setStep(1); window.scrollTo({top:0}); }
       function back() { setErr(""); setStep(0); }
+      function resetAll(){ setDone(null);setCart({});setStep(0);setPromo(null);setPromoCode("");setSlipFile(null);setCustomer("");setPhone("");setAddress("");setPostal("");setSub("");setDist("");setProv("");setNote("");setInvoice(false);setInvoiceName(""); window.scrollTo({top:0}); }
+      function goHome(msg){ resetAll(); if(msg){ setFlash(msg); setTimeout(()=>setFlash(""), 7000); } }
       async function submit() {
         const e = validate(); if(e){ setErr(e); return; }
         setErr(""); setSubmitting(true);
@@ -245,7 +248,7 @@
           };
           const order = await Store.createOrder(payload);
           if (slipFile) { try { const url = await Store.uploadSlip(order.order_id, slipFile); order.slip_url = url; } catch(se){ /* slip optional — ไม่ block */ } }
-          setDone(order); window.scrollTo({top:0});
+          if(order&&order.slip_url){ goHome("✓ รับออเดอร์ "+order.order_id+" และสลิปเรียบร้อยแล้ว — รอแอดมินยืนยันการชำระเงิน ขอบคุณค่ะ 🙏"); } else { setDone(order); window.scrollTo({top:0}); }
         } catch(er){ setErr("บันทึกออเดอร์ไม่สำเร็จ: " + (er&&er.message?er.message:er)); }
         finally { setSubmitting(false); }
       }
@@ -262,9 +265,9 @@
                 <p className="mt-2 text-xs text-gray-400">ออเดอร์ถูกบันทึกแล้ว — โอนเงินตาม QR แล้วแนบสลิป (ตอนนี้หรือทีหลังก็ได้)</p>
               </div>
               <div className="mt-4"><PaymentBox settings={settings} amount={done.amount} /></div>
-              <SlipUploadBox order={done} onUploaded={(url)=>setDone({...done, slip_url:url})} />
+              <SlipUploadBox order={done} onUploaded={(url)=>{ setDone({...done, slip_url:url}); setTimeout(()=>goHome("✓ อัปโหลดสลิปเรียบร้อยแล้ว — รอแอดมินยืนยันการชำระเงิน ขอบคุณค่ะ 🙏"), 1300); }} />
               <button className="mt-4 w-full rounded-xl border-2 border-sixty-blue px-5 py-3 font-semibold text-sixty-blued"
-                onClick={()=>{setDone(null);setCart({});setStep(0);setPromo(null);setPromoCode("");setSlipFile(null);setCustomer("");setPhone("");setAddress("");setPostal("");setSub("");setDist("");setProv("");setNote("");setInvoice(false);setInvoiceName("");}}>สั่งซื้อรายการใหม่</button>
+                onClick={resetAll}>สั่งซื้อรายการใหม่</button>
             </div>
           </Shell>
         );
@@ -281,6 +284,10 @@
                 </li>
               ))}
             </ol>
+          )}
+
+          {step===0 && flash && (
+            <div className="mx-auto mb-5 max-w-xl rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm font-semibold text-emerald-700">{flash}</div>
           )}
 
           {step===0 && (
