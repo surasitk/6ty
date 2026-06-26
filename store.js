@@ -170,6 +170,31 @@
     branchesList: async function () { var r = await client().from("branches").select("*").order("branch_code", { ascending: true }); if (r.error) throw new Error(r.error.message); return r.data || []; },
     branchUpsert: async function (b) { var r = await client().from("branches").upsert({ branch_id: b.branch_id, branch_code: b.branch_code || "", branch_name: b.branch_name || "", province: b.province || "", active: b.active !== false, affiliation: b.affiliation || "", hub: b.hub || "" }).select(); if (r.error) throw new Error(r.error.message); return (r.data && r.data[0]) || b; },
     branchToggle: async function (id, cur) { var r = await client().from("branches").update({ active: !cur }).eq("branch_id", id); if (r.error) throw new Error(r.error.message); },
-    branchRemove: async function (id) { var r = await client().from("branches").delete().eq("branch_id", id); if (r.error) throw new Error(r.error.message); }
+    branchRemove: async function (id) { var r = await client().from("branches").delete().eq("branch_id", id); if (r.error) throw new Error(r.error.message); },
+
+    // ── Orders: update fields (e.g. payment_status, rider_status) ──
+    orderUpdate: async function (orderId, fields) { var r = await client().from("orders").update(fields).eq("order_id", orderId); if (r.error) throw new Error(r.error.message); },
+
+    // ── Rider Status ──
+    riderList: async function () { var r = await client().from("rider_status").select("*").order("updated_at", { ascending: false }).limit(1000); if (r.error) throw new Error(r.error.message); return r.data || []; },
+    // Bulk upsert rider rows; also map order_id (add ORD- prefix) and update the matching order's rider_status.
+    riderImport: async function (rows) {
+      var prepared = rows.map(function (r) {
+        var raw = String(r.order_id || "").trim();
+        var matched = raw ? (/^ORD-/i.test(raw) ? raw : "ORD-" + raw) : "";
+        return { order_id: raw, rider_status: r.rider_status || "", date_send: r.date_send || "", job_id: r.job_id || "", matched_order_id: matched, updated_at: new Date().toISOString() };
+      }).filter(function (r) { return r.order_id; });
+      if (prepared.length) {
+        var up = await client().from("rider_status").upsert(prepared).select();
+        if (up.error) throw new Error(up.error.message);
+      }
+      // update orders.rider_status for matched sales orders (no-op if not found)
+      var updated = 0;
+      for (var i = 0; i < prepared.length; i++) {
+        var p = prepared[i]; if (!p.matched_order_id || !p.rider_status) continue;
+        try { await client().from("orders").update({ rider_status: p.rider_status }).eq("order_id", p.matched_order_id); updated++; } catch (e) { /* ignore */ }
+      }
+      return { imported: prepared.length, mappedUpdates: updated };
+    }
   };
 })();
