@@ -195,6 +195,10 @@
         try { await client().from("orders").update({ rider_status: p.rider_status }).eq("order_id", p.matched_order_id); updated++; } catch (e) { /* ignore */ }
       }
       return { imported: prepared.length, mappedUpdates: updated };
-    }
+    },
+
+    // ── Cronjob config (single row, id=1) ──
+    cronGet: async function () { var r = await client().from("cron_config").select("*").eq("id", 1); if (r.error) throw new Error(r.error.message); return (r.data && r.data[0]) || { id: 1, file_type: "csv", status_filter: "Paid", sweep_time: "09:00", send_time: "09:00", channel_email: true, channel_line: false, email_to: "surasit@transformational.com", enabled: true }; },
+    cronSave: async function (cfg) { var r = await client().from("cron_config").upsert(Object.assign({ id: 1 }, cfg, { updated_at: new Date().toISOString() })); if (r.error) throw new Error(r.error.message); }
   };
 })();

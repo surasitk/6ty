@@ -32,7 +32,7 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="store.js?v=9"></script>
+  <script src="store.js?v=10"></script>
 
   <script type="text/plain" id="app-src">
     const { useState, useEffect } = React;
@@ -236,7 +236,12 @@
       const [err, setErr] = useState("");
       const [flash, setFlash] = useState("");
       const refresh = () => Store.ordersList().then(setRows).catch(e=>{ setErr(e.message); setRows([]); });
-      useEffect(() => { refresh(); }, []);
+      const [cron, setCron] = useState(null);
+      const [showCron, setShowCron] = useState(false);
+      const [cronFlash, setCronFlash] = useState("");
+      useEffect(() => { refresh(); Store.cronGet().then(setCron).catch(()=>setCron({})); }, []);
+      const setC = (k,v) => setCron(c => ({ ...c, [k]:v }));
+      async function saveCron(){ try { await Store.cronSave(cron); setCronFlash("บันทึกการตั้งค่า cronjob แล้ว ✓"); setTimeout(()=>setCronFlash(""),3000); } catch(e){ alert(e.message); } }
       const itemsText = (items) => Array.isArray(items) ? items.map(i => (i.name||i.sku_code||"สินค้า") + " ×" + (i.qty||1)).join(", ") : "";
       const PAY = ["Pending","Paid","Cancelled"];
       async function changePay(o, val){
@@ -651,6 +656,50 @@
           </div>
           <p className="mb-4 text-xs text-gray-400">ไฟล์จากไปรษณีย์: order_id ไม่มี prefix (เช่น 20260331-111237-6) ระบบจะเติม <b>ORD-</b> แล้วจับคู่กับออเดอร์ + อัปเดต Rider Status ให้อัตโนมัติ</p>
           {flash && <p className="mb-3 rounded-xl bg-sixty-mist px-4 py-2 text-sm font-medium text-sixty-blued">{flash}</p>}
+
+          <section className="card mb-4">
+            <button className="flex w-full items-center justify-between" onClick={()=>setShowCron(s=>!s)}>
+              <span className="font-bold">⏰ Cronjob — ส่งรายงานอัตโนมัติทางอีเมล</span>
+              <span className={"rounded-full px-2.5 py-0.5 text-xs font-semibold " + (cron&&cron.enabled?"bg-emerald-100 text-emerald-700":"bg-gray-200 text-gray-500")}>{cron&&cron.enabled?"● เปิด":"○ ปิด"}</span>
+            </button>
+            {showCron && cron && (
+              <div className="mt-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div><label className="label">ชนิดไฟล์ที่ส่ง</label>
+                    <select className="field" value={cron.file_type||"csv"} onChange={e=>setC("file_type",e.target.value)}>
+                      <option value="csv">CSV (.csv)</option>
+                      <option value="xlsx">Excel (.xlsx)</option>
+                    </select>
+                  </div>
+                  <div><label className="label">กวาดสถานะ (Payment Status)</label>
+                    <select className="field" value={cron.status_filter||"Paid"} onChange={e=>setC("status_filter",e.target.value)}>
+                      <option value="Paid">Paid</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Cancelled">Cancelled</option>
+                      <option value="All">ทั้งหมด (All)</option>
+                    </select>
+                  </div>
+                  <div><label className="label">เริ่มกวาดสถานะเวลา</label><input type="time" className="field" value={cron.sweep_time||"09:00"} onChange={e=>setC("sweep_time",e.target.value)} /></div>
+                  <div><label className="label">ส่งรายงานเวลา</label><input type="time" className="field" value={cron.send_time||"09:00"} onChange={e=>setC("send_time",e.target.value)} /></div>
+                </div>
+                <div className="mt-3">
+                  <label className="label">ช่องทางการส่ง</label>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-sixty-pink" checked={!!cron.channel_email} onChange={e=>setC("channel_email",e.target.checked)} /><span className="text-sm font-semibold">อีเมล →</span></label>
+                      <input className="field max-w-xs" value={cron.email_to||""} onChange={e=>setC("email_to",e.target.value)} placeholder="surasit@transformational.com" />
+                    </div>
+                    <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-sixty-pink" checked={!!cron.channel_line} onChange={e=>setC("channel_line",e.target.checked)} /><span className="text-sm font-semibold">LINE <span className="font-normal text-gray-400">(ต้องตั้ง LINE token ใน Apps Script)</span></span></label>
+                  </div>
+                </div>
+                <label className="mt-3 flex items-center gap-2"><input type="checkbox" className="h-5 w-5 accent-sixty-pink" checked={!!cron.enabled} onChange={e=>setC("enabled",e.target.checked)} /><span className="text-sm font-semibold">เปิดใช้งาน cronjob</span></label>
+                {cronFlash && <p className="mt-2 text-sm font-medium text-sixty-blued">{cronFlash}</p>}
+                <div className="mt-3"><button className="btn-grad px-6 py-2.5" onClick={saveCron}>บันทึกการตั้งค่า</button></div>
+                <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">⚙️ ค่านี้เก็บใน Supabase — ตัวที่ "รันจริง" คือ Google Apps Script <b>CronReport.gs</b> (แนบให้แล้ว) ติดตั้งในโปรเจกต์ Apps Script + ตั้ง time-driven trigger ให้รันตามเวลา แล้วมันจะอ่าน config นี้ → สร้างไฟล์ → อีเมลให้อัตโนมัติ</p>
+              </div>
+            )}
+          </section>
+
           {rows===null && <p className="text-gray-400">กำลังโหลด…</p>}
           {rows && rows.length===0 && <p className="card text-center text-sm text-gray-400">ยังไม่มีข้อมูล Rider Status — อัปโหลดไฟล์จากไปรษณีย์</p>}
           {rows && rows.length>0 && (
